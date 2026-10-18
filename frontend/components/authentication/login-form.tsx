@@ -14,8 +14,9 @@ import { getErrorMessage } from "@/lib/error-messages";
 
 export function LoginForm({
   className,
+  next = "/dashboard",
   ...props
-}: React.ComponentProps<"div">) {
+}: React.ComponentProps<"div"> & { next?: string }) {
   const [email, setEmail] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +39,7 @@ export function LoginForm({
       { email, password },
       {
         onSuccess: () => {
-          // router.replace("/dashboard");
+          router.replace(next);
         },
         onError: (error) => {
           const { title, description } = getErrorMessage("auth-login", error);

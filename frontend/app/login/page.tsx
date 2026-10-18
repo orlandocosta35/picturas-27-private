@@ -4,15 +4,13 @@ import { LoginForm } from "@/components/authentication/login-form";
 import Image from "next/image";
 import { useEffect, useState, useLayoutEffect } from "react";
 import { useSession } from "@/providers/session-provider";
-import { redirect, RedirectType } from "next/navigation";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 export default function Login() {
   const [seed, setSeed] = useState<number | null>(null);
   const session = useSession();
-  const searchParams = useSearchParams();
   const router = useRouter();
-  const next = searchParams.get("next") || "/dashboard";
+  const next = "/dashboard";
 
 
   useEffect(() => {
@@ -39,7 +37,7 @@ export default function Login() {
       )}
       <div className="absolute left-0 top-0 h-screen w-screen bg-white bg-opacity-50 dark:bg-black backdrop-blur-sm" />
       <div className="w-full max-w-sm md:max-w-3xl z-10">
-        <LoginForm />
+        <LoginForm next={next} />
       </div>
     </div>
   );

@@ -4,16 +4,14 @@ import { RegisterForm } from "@/components/authentication/register-form";
 import Image from "next/image";
 import { useEffect, useState, useLayoutEffect } from "react";
 import { useSession } from "@/providers/session-provider";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 export default function Register() {
   const [seed, setSeed] = useState<number | null>(null);
   const session = useSession();
-  const searchParams = useSearchParams();
   const router = useRouter();
 
-  // Se não vier nada, cai por defeito para o dashboard
-  const next = searchParams.get("next") || "/dashboard";
+  const next = "/dashboard";
 
   useEffect(() => {
     setSeed(Math.floor(Math.random() * 100));

@@ -8,6 +8,7 @@ import { OctagonAlert } from "lucide-react";
 import { useGetSession } from "@/lib/queries/session";
 import { useUpdateSession } from "@/lib/mutations/session";
 import { getErrorMessage } from "@/lib/error-messages";
+import { usePathname } from "next/navigation";
 
 interface SessionContextData {
   session: SessionData;
@@ -18,6 +19,9 @@ const SessionContext = createContext<SessionContextData | undefined>(undefined);
 export function SessionProvider({ children }: { children: React.ReactNode }) {
   const session = useGetSession();
   const updateSession = useUpdateSession();
+  const pathname = usePathname();
+  const isPublicAuthPage = pathname === "/login" || pathname === "/register";
+  const isVideoDemo = pathname === "/video";
 
   useEffect(() => {
     const session = localStorage.getItem("session");
@@ -39,6 +43,25 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("session-updated", handler);
     return () => window.removeEventListener("session-updated", handler);
   }, [session]);
+
+  if (!session.data && (isVideoDemo || isPublicAuthPage)) {
+    const demoSession: SessionData = {
+      user: {
+        _id: isVideoDemo ? "video-demo" : "auth-visitor",
+        name: isVideoDemo ? "Demonstração" : undefined,
+        type: "anonymous",
+        operations: [],
+        remaining_operations: null,
+      },
+      token: "",
+    };
+
+    return (
+      <SessionContext.Provider value={{ session: demoSession }}>
+        {children}
+      </SessionContext.Provider>
+    );
+  }
 
   if (!session.data)
     return (

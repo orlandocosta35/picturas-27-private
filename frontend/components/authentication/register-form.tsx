@@ -52,7 +52,7 @@ export function RegisterForm({
       { name: `${firstName} ${lastName}`, email, password, type: "free" },
       {
         onSuccess: () => {
-          // router.replace(next);
+          router.replace(next);
         },
         onError: (error) => {
           toast({

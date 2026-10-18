@@ -24,6 +24,83 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
 const projectsURL = "https://projects:9001/";
+const videoURL = "http://video_processing:12000";
+
+const videoUpload = multer({ storage: multer.memoryStorage() });
+
+router.post(
+  "/:user/:project/video/resize",
+  auth.checkToken,
+  videoUpload.single("video"),
+  async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "Video is required" });
+    if (String(req.authUserId || req.params.user) !== String(req.params.user)) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+
+    const form = new FormData();
+    form.append("video", req.file.buffer, {
+      filename: req.file.originalname,
+      contentType: req.file.mimetype,
+    });
+    for (const field of ["width", "height", "resizeMode", "outputFormat", "premium"]) {
+      if (req.body[field] !== undefined) form.append(field, String(req.body[field]));
+    }
+    form.append("userId", String(req.authUserId || req.params.user));
+
+    try {
+      const response = await axios.post(`${videoURL}/video/resize`, form, {
+        headers: form.getHeaders(),
+        maxBodyLength: Infinity,
+        maxContentLength: Infinity,
+      });
+      return res.status(response.status).json(response.data);
+    } catch (error) {
+      return forwardAxiosError(res, error, "Video processing service unavailable");
+    }
+  },
+);
+
+router.get(
+  "/:user/:project/video/tasks/:taskId",
+  auth.checkToken,
+  async (req, res) => {
+    if (String(req.authUserId || req.params.user) !== String(req.params.user)) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+    try {
+      const response = await axios.get(`${videoURL}/video/tasks/${req.params.taskId}`, {
+        params: { userId: req.authUserId || req.params.user },
+      });
+      return res.status(response.status).json(response.data);
+    } catch (error) {
+      return forwardAxiosError(res, error, "Video processing service unavailable");
+    }
+  },
+);
+
+router.get(
+  "/:user/:project/video/tasks/:taskId/download",
+  auth.checkToken,
+  async (req, res) => {
+    if (String(req.authUserId || req.params.user) !== String(req.params.user)) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+    try {
+      const response = await axios.get(`${videoURL}/video/tasks/${req.params.taskId}/download`, {
+        responseType: "stream",
+        params: { userId: req.authUserId || req.params.user },
+      });
+      res.set("Content-Type", response.headers["content-type"] || "application/octet-stream");
+      if (response.headers["content-disposition"]) {
+        res.set("Content-Disposition", response.headers["content-disposition"]);
+      }
+      return response.data.pipe(res);
+    } catch (error) {
+      return forwardAxiosError(res, error, "Video result unavailable");
+    }
+  },
+);
 
 function forwardAxiosError(res, err, fallbackMsg) {
   const status = err.response?.status || 500;
