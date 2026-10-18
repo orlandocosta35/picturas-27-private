@@ -21,6 +21,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import {
+  createVideoResizeTask,
+  downloadVideoResizeTask,
+  getVideoResizeTask,
+  refundVideoOperation,
+  reserveVideoOperation,
+} from "@/lib/video";
+import { useUpdateSession } from "@/lib/mutations/session";
 
 type VideoOperation = "resize" | "trim";
 type VideoMetadata = {
@@ -28,6 +36,14 @@ type VideoMetadata = {
   width: number;
   height: number;
 };
+
+const RESOLUTION_PRESETS = [
+  { label: "Original", width: null, height: null },
+  { label: "4K", width: 3840, height: 2160 },
+  { label: "Full HD", width: 1920, height: 1080 },
+  { label: "HD", width: 1280, height: 720 },
+  { label: "SD", width: 854, height: 480 },
+] as const;
 
 const ACCEPTED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
 
@@ -43,7 +59,17 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function VideoEditor() {
+export function VideoEditor({
+  initialFile,
+  userId,
+  projectId,
+  token,
+}: {
+  initialFile?: File;
+  userId?: string;
+  projectId?: string;
+  token?: string;
+} = {}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const previewUrlRef = useRef<string | null>(null);
   const progressTimerRef = useRef<number | null>(null);
@@ -55,9 +81,12 @@ export function VideoEditor() {
   const [endSeconds, setEndSeconds] = useState(0);
   const [width, setWidth] = useState(1280);
   const [height, setHeight] = useState(720);
-  const [keepAspectRatio, setKeepAspectRatio] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const operationReservedRef = useRef(false);
+  const updateSession = useUpdateSession();
 
   useEffect(() => {
     return () => {
@@ -65,8 +94,9 @@ export function VideoEditor() {
       if (progressTimerRef.current !== null) {
         window.clearInterval(progressTimerRef.current);
       }
+      if (downloadUrl) URL.revokeObjectURL(downloadUrl);
     };
-  }, []);
+  }, [downloadUrl]);
 
   useEffect(() => {
     if (metadata) setEndSeconds(metadata.duration);
@@ -88,6 +118,10 @@ export function VideoEditor() {
     setProgress(null);
     setError(null);
   };
+
+  useEffect(() => {
+    if (initialFile) handleFile(initialFile);
+  }, [initialFile]);
 
   const handleInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     handleFile(event.target.files?.[0]);
@@ -127,20 +161,71 @@ export function VideoEditor() {
       return;
     }
 
+    if (operation !== "resize") {
+      setError("O recorte pertence ao UC-VID-002. Seleciona Redimensionar.");
+      return;
+    }
+    if (!userId || !projectId || !token) {
+      setError("É necessário iniciar sessão para processar o vídeo.");
+      return;
+    }
+
     setError(null);
     setProgress(0);
-    progressTimerRef.current = window.setInterval(() => {
-      setProgress((current) => {
-        if (current === null || current >= 100) {
-          if (progressTimerRef.current !== null) {
-            window.clearInterval(progressTimerRef.current);
-            progressTimerRef.current = null;
+    setDownloadUrl(null);
+    reserveVideoOperation(userId, token)
+      .then(() => {
+        operationReservedRef.current = true;
+      })
+      .then(() =>
+        createVideoResizeTask(userId, projectId, token, file, {
+          width,
+          height,
+          resizeMode: "contain",
+          outputFormat: "mp4",
+        }),
+      )
+      .then((task) => {
+        setTaskId(task.id);
+        progressTimerRef.current = window.setInterval(async () => {
+          try {
+            const current = await getVideoResizeTask(userId, projectId, token, task.id);
+            setProgress(current.progress);
+            if (current.status === "completed") {
+              if (progressTimerRef.current !== null) window.clearInterval(progressTimerRef.current);
+              const result = await downloadVideoResizeTask(userId, projectId, token, task.id);
+              setDownloadUrl(URL.createObjectURL(result));
+              updateSession.mutate({ userId, token });
+            } else if (current.status === "failed") {
+              if (progressTimerRef.current !== null) window.clearInterval(progressTimerRef.current);
+              if (operationReservedRef.current) {
+                operationReservedRef.current = false;
+                void refundVideoOperation(userId, token).finally(() => {
+                  updateSession.mutate({ userId, token });
+                });
+              }
+              setError(current.error ?? "O processamento do vídeo falhou.");
+            }
+          } catch {
+            if (progressTimerRef.current !== null) window.clearInterval(progressTimerRef.current);
+            setError("Não foi possível consultar o progresso do processamento.");
           }
-          return 100;
+        }, 1000);
+      })
+      .catch((error) => {
+        if (operationReservedRef.current) {
+          operationReservedRef.current = false;
+          void refundVideoOperation(userId, token).finally(() => {
+            updateSession.mutate({ userId, token });
+          });
         }
-        return Math.min(current + 10, 100);
+        setProgress(null);
+        setError(
+          error?.response?.status === 701
+            ? "Atingiste o limite diário de operações."
+            : "Não foi possível iniciar o processamento do vídeo.",
+        );
       });
-    }, 120);
   };
 
   const maxDuration = metadata?.duration ?? 1;
@@ -301,37 +386,37 @@ export function VideoEditor() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor="video-width">Largura</Label>
-                      <Input
-                        id="video-width"
-                        type="number"
-                        min={1}
-                        value={width}
-                        onChange={(event) => setWidth(Number(event.target.value))}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="video-height">Altura</Label>
-                      <Input
-                        id="video-height"
-                        type="number"
-                        min={1}
-                        value={height}
-                        onChange={(event) => setHeight(Number(event.target.value))}
-                      />
+                  <div className="space-y-2">
+                    <Label>Resolução predefinida</Label>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {RESOLUTION_PRESETS.map((preset) => {
+                        const isSelected =
+                          preset.width === null
+                            ? metadata?.width === width && metadata?.height === height
+                            : width === preset.width && height === preset.height;
+
+                        return (
+                          <Button
+                            key={preset.label}
+                            type="button"
+                            variant={isSelected ? "default" : "outline"}
+                            className="h-auto min-h-14 flex-col gap-0.5 py-2 text-center"
+                            onClick={() => {
+                              setWidth(preset.width ?? metadata?.width ?? width);
+                              setHeight(preset.height ?? metadata?.height ?? height);
+                            }}
+                          >
+                            {preset.label}
+                            {preset.width !== null && (
+                              <span className="text-xs font-normal opacity-75">
+                                {preset.width}×{preset.height}
+                              </span>
+                            )}
+                          </Button>
+                        );
+                      })}
                     </div>
                   </div>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={keepAspectRatio}
-                      onChange={(event) => setKeepAspectRatio(event.target.checked)}
-                      className="size-4 accent-primary"
-                    />
-                    Manter relação de aspeto
-                  </label>
                 </div>
               )}
 
@@ -356,7 +441,7 @@ export function VideoEditor() {
               <Button
                 className="w-full gap-2"
                 onClick={handleProcess}
-                disabled={!metadata || progress !== null && progress < 100}
+                disabled={!metadata || taskId !== null || progress !== null && progress < 100}
               >
                 {progress !== null && progress < 100 ? (
                   <LoaderCircle className="size-4 animate-spin" />
@@ -367,6 +452,15 @@ export function VideoEditor() {
                 )}
                 {progress === 100 ? "Concluído" : "Processar vídeo"}
               </Button>
+              {downloadUrl && (
+                <a
+                  className="inline-flex w-full items-center justify-center rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted"
+                  href={downloadUrl}
+                  download={`resized-${file.name}`}
+                >
+                  Descarregar vídeo processado
+                </a>
+              )}
             </CardContent>
           </Card>
         </div>

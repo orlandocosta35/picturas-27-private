@@ -87,7 +87,13 @@ def run_task(task):
         write_task(task)
         for line in process.stdout:
             if line.startswith("out_time_ms="):
-                elapsed = int(line.split("=", 1)[1]) / 1_000_000
+                raw_elapsed = line.split("=", 1)[1].strip()
+                if raw_elapsed == "N/A":
+                    continue
+                try:
+                    elapsed = int(raw_elapsed) / 1_000_000
+                except ValueError:
+                    continue
                 task["progress"] = min(99, round((elapsed / duration) * 100)) if duration else 0
                 write_task(task)
         return_code = process.wait()

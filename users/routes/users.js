@@ -37,9 +37,7 @@ function get_cur_date() {
 }
 
 function removeSensitiveInfo(user) {
-  const userObj = user.toObject ? user.toObject() : user; // Ensure it's a plain object
-  const { password_hash, ...userWithoutPassword } = userObj; // Destructure to exclude password_hash
-  return userWithoutPassword;
+  return user.toJSON ? user.toJSON() : user;
 }
 
 function getRemainingOperations(user) {

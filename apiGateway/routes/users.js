@@ -12,6 +12,26 @@ const httpsAgent = new https.Agent({
 
 const usersURL = "https://users:10001/";
 
+router.get("/:user/process/:advanced_tools", auth.checkToken, function (req, res) {
+  axios
+    .get(usersURL + `${req.params.user}/process/${req.params.advanced_tools}`, {
+      httpsAgent,
+      headers: { Authorization: req.headers.authorization },
+    })
+    .then((resp) => res.status(resp.status).jsonp(resp.data))
+    .catch((err) => res.status(err.response?.status ?? 500).jsonp(err.response?.data ?? "Unable to reserve operation"));
+});
+
+router.post("/:user/process/refund/:advanced_tools", auth.checkToken, function (req, res) {
+  axios
+    .post(usersURL + `${req.params.user}/process/refund/${req.params.advanced_tools}`, {}, {
+      httpsAgent,
+      headers: { Authorization: req.headers.authorization },
+    })
+    .then((resp) => res.status(resp.status).jsonp(resp.data))
+    .catch((err) => res.status(err.response?.status ?? 500).jsonp(err.response?.data ?? "Unable to refund operation"));
+});
+
 /*
 User structure
 {
@@ -94,8 +114,13 @@ router.post("/:email/login", function (req, res, next) {
     .post(usersURL + `${req.params.email}/login`, req.body, {
       httpsAgent: httpsAgent,
     })
-    .then((resp) => res.status(201).jsonp(resp.data))
-    .catch((err) => res.status(500).jsonp("Error logging in"));
+    .then((resp) => res.status(resp.status).jsonp(resp.data))
+    .catch((err) => {
+      if (err.response) {
+        return res.status(err.response.status).jsonp(err.response.data);
+      }
+      return res.status(502).jsonp("Users service unavailable");
+    });
 });
 
 /**

@@ -45,6 +45,7 @@ import { useUpdateSession } from "@/lib/mutations/session";
 import { getErrorMessage } from "@/lib/error-messages";
 import { PresetsDialog } from "@/components/presets/presets-dialog";
 import { AiAssistantDialog } from "@/components/assistant/ai-assistant-dialog";
+import { VideoProjectView } from "@/components/project-page/video-project-view";
 
 export default function Project({
   params,
@@ -592,6 +593,19 @@ const handleCancel = () => {
   );
 };
   
+  const isVideoProject =
+    project.data?.type === "video" || Boolean(project.data?.video);
+
+  if (isVideoProject) {
+    return (
+      <VideoProjectView
+        userId={session.user._id}
+        projectId={pid}
+        token={session.token}
+      />
+    );
+  }
+
   return (
     <ProjectProvider
       project={project.data}

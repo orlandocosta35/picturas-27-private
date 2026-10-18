@@ -277,6 +277,25 @@ router.get("/:user", auth.checkToken, function (req, res, next) {
  * @body Empty
  * @returns The required project
  */
+router.get(
+  "/:user/:project/video",
+  auth.checkToken,
+  function (req, res) {
+    axios
+      .get(`${projectsURL}${req.params.user}/${req.params.project}/video`, {
+        headers: { Authorization: req.headers["authorization"] },
+        httpsAgent: httpsAgent,
+        responseType: "stream",
+      })
+      .then((resp) => {
+        res.status(resp.status);
+        res.set("Content-Type", resp.headers["content-type"] || "video/mp4");
+        return resp.data.pipe(res);
+      })
+      .catch((err) => forwardAxiosError(res, err, "Error retrieving project video"));
+  },
+);
+
 router.get("/:user/:project", auth.checkToken, function (req, res, next) {
   const ownerId = req.query.owner || req.params.user;
   const callerId = req.authUserId || req.params.user;
@@ -439,6 +458,31 @@ router.post("/:user", auth.checkToken, function (req, res, next) {
     .then((resp) => res.status(201).jsonp(resp.data))
     .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
 });
+
+router.post(
+  "/:user/:project/video",
+  upload.single("video"),
+  auth.checkToken,
+  function (req, res) {
+    if (!req.file) return res.status(400).json({ error: "Video is required" });
+    const data = new FormData();
+    data.append("video", req.file.buffer, {
+      filename: req.file.originalname,
+      contentType: req.file.mimetype,
+    });
+
+    axios
+      .post(`${projectsURL}${req.params.user}/${req.params.project}/video`, data, {
+        headers: {
+          ...data.getHeaders(),
+          Authorization: req.headers["authorization"],
+        },
+        httpsAgent: httpsAgent,
+      })
+      .then((resp) => res.status(resp.status).jsonp(resp.data))
+      .catch((err) => forwardAxiosError(res, err, "Error storing project video"));
+  },
+);
 
 /**
  * Preview an image

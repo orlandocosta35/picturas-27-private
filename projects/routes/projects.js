@@ -5,6 +5,7 @@ const axios = require("axios");
 const sharp = require("sharp");
 
 const multer = require("multer");
+
 const FormData = require("form-data");
 
 const fs = require("fs");
@@ -772,6 +773,18 @@ router.get("/:user", (req, res, next) => {
     .catch((_) => res.status(500).jsonp("Error acquiring user's projects"));
 });
 
+router.get("/:user/:project/video", async (req, res) => {
+  try {
+    const project = await Project.getOne(req.params.user, req.params.project);
+    if (!project?.video?.path) return res.status(404).send("Video not found");
+    res.type(project.video.mimeType);
+    return res.sendFile(path.resolve(project.video.path));
+  } catch (error) {
+    console.error("Error retrieving project video:", error);
+    return res.status(500).send("Error retrieving project video");
+  }
+});
+
 // Get a specific user's project
 router.get("/:user/:project", checkSharePermission, async (req, res, next) => {
   try {
@@ -813,6 +826,13 @@ router.get("/:user/:project", checkSharePermission, async (req, res, next) => {
       const response = {
         _id: project._id,
         name: project.name,
+        type: project.type,
+        video: project.video
+          ? {
+              originalName: project.video.originalName,
+              mimeType: project.video.mimeType,
+            }
+          : null,
         tools: project.tools,
         imgs: [],
         version: project.version,
@@ -1004,6 +1024,7 @@ router.post("/:user", (req, res, next) => {
   const project = {
     name: req.body.name,
     user_id: req.params.user,
+    type: req.body.type === "video" ? "video" : "image",
     imgs: [],
     tools: [],
   };
@@ -1011,6 +1032,40 @@ router.post("/:user", (req, res, next) => {
   Project.create(project)
     .then((project) => res.status(201).jsonp(project))
     .catch((_) => res.status(502).jsonp(`Error creating new project`));
+});
+
+router.post("/:user/:project/video", upload.single("video"), async (req, res) => {
+  if (!req.file) return res.status(400).jsonp("Video is required");
+  if (!["video/mp4", "video/webm", "video/quicktime"].includes(req.file.mimetype)) {
+    return res.status(415).jsonp("Unsupported video format");
+  }
+
+  try {
+    const project = await Project.getOne(req.params.user, req.params.project);
+    if (!project || project.type !== "video") {
+      return res.status(404).jsonp("Video project not found");
+    }
+
+    const directory = path.join(
+      __dirname,
+      `../images/users/${req.params.user}/projects/${req.params.project}/video`,
+    );
+    fs.mkdirSync(directory, { recursive: true });
+    const filePath = path.join(directory, `${Date.now()}-${path.basename(req.file.originalname)}`);
+    fs.writeFileSync(filePath, req.file.buffer);
+
+    project.video = {
+      originalName: req.file.originalname,
+      mimeType: req.file.mimetype,
+      path: filePath,
+    };
+    project.version += 1;
+    await project.save();
+    return res.status(201).jsonp(project);
+  } catch (error) {
+    console.error("Error storing project video:", error);
+    return res.status(500).jsonp("Error storing project video");
+  }
 });
 
 // Preview an image
