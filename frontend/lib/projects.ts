@@ -23,6 +23,7 @@ export interface Project {
   user_id: string;
   name: string;
   version: number;
+  type?: "image" | "video";
 }
 
 export interface SingleProject {
@@ -32,6 +33,11 @@ export interface SingleProject {
   tools: ProjectToolResponse[];
   imgs: ProjectImage[];
   version: number;
+  type?: "image" | "video";
+  video?: {
+    originalName: string;
+    mimeType: string;
+  } | null;
 
 }
 export interface ProjectImage {
@@ -210,6 +216,8 @@ export const fetchProject = async (
     imgs: response.data.imgs,
     tools: response.data.tools,
     version: response.data.version,
+    type: response.data.type,
+    video: response.data.video,
   } as SingleProject;
 };
 
@@ -218,15 +226,17 @@ export const addProject = async ({
   token,
   name,
   images = [],
+  video,
 }: {
   uid: string;
   token: string;
   name: string;
   images?: File[];
+  video?: File;
 }) => {
   const response = await api.post<SingleProject>(
     `/projects/${uid}`,
-    { name },
+    { name, type: video ? "video" : "image" },
     { headers: { Authorization: `Bearer ${token}` } },
   );
 
@@ -243,6 +253,16 @@ export const addProject = async ({
       images,
       projectVersion: project.version,
     });
+  }
+  if (video) {
+    const form = new FormData();
+    form.append("video", video);
+    const videoResponse = await api.post(
+      `/projects/${uid}/${project._id}/video`,
+      form,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (videoResponse.status !== 201) throw new Error("Failed to upload project video");
   }
 
   return project;

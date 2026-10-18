@@ -469,6 +469,14 @@ services:
       - ./frontend:/app
       - /app/node_modules
 
+  video_processing:
+    build: ./videoProcessing
+    restart: on-failure
+    networks:
+      - elk
+    volumes:
+      - video_data:/data
+
   ws_gateway:
     build: ./wsGateway
     restart: on-failure
@@ -537,5 +545,6 @@ volumes:
   project_data:
   user_data:
   image_data:
+  video_data:
   seaweedfs_data:
   subscription_data:

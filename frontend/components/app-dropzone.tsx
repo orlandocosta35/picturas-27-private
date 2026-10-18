@@ -7,9 +7,16 @@ import Dropzone from "react-dropzone";
 interface CustomDropzoneProps {
   onDrop: (acceptedFiles: File[]) => void;
   children?: React.ReactNode;
+  accept?: Record<string, string[]>;
+  onRejected?: (files: File[]) => void;
 }
 
-export default function AppDropzone({ onDrop, children }: CustomDropzoneProps) {
+export default function AppDropzone({
+  onDrop,
+  children,
+  accept,
+  onRejected,
+}: CustomDropzoneProps) {
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const { toast } = useToast();
 
@@ -20,19 +27,20 @@ export default function AppDropzone({ onDrop, children }: CustomDropzoneProps) {
         onDragEnter={() => setIsDragging(true)}
         onDragLeave={() => setIsDragging(false)}
         onDropAccepted={() => setIsDragging(false)}
-        onDropRejected={() => {
+        onDropRejected={(rejectedFiles) => {
           setIsDragging(false);
+          onRejected?.(rejectedFiles.map(({ file }) => file));
           toast({
             title: "Invalid file type!",
-            description: "Please upload a .png, .jpeg, .jpg, or .zip file",
+            description: "Please upload a supported image, video, or .zip file",
             variant: "destructive",
           });
         }}
-        accept={{
+        accept={accept ?? {
           "image/png": [".png"],
-          "image/jpeg": [".jpeg"],
-          "image/jpg": [".jpg"],
+          "image/jpeg": [".jpeg", ".jpg"],
           "application/zip": [".zip"],
+          "application/x-zip-compressed": [".zip"],
         }}
       >
         {({ getRootProps, getInputProps }) => (
