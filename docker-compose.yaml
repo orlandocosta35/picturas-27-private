@@ -140,10 +140,13 @@ services:
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: user
       RABBITMQ_PASS: password
+      VIDEO_INTERNAL_SECRET: ${VIDEO_INTERNAL_SECRET:?Define VIDEO_INTERNAL_SECRET in .env}
+
     networks:
       - elk
     volumes:
       - image_data:/app/images
+      - video_data:/video-tasks:ro
 
   users_mongoDB:
     image: mongo:4.4
@@ -169,6 +172,7 @@ services:
       - "10001:10001"
     restart: on-failure
     environment:
+      - VIDEO_INTERNAL_SECRET=${VIDEO_INTERNAL_SECRET:?Define VIDEO_INTERNAL_SECRET in .env}
       - FREE_DAILY_OP=5
       - JWT_SECRET_KEY=lisan_al_gaib
       - FIELD_ENCRYPTION_KEY=uma-frase-secreta-bem-grande-ou-64-hex
@@ -214,6 +218,7 @@ services:
       - users
     restart: on-failure
     environment:
+      - VIDEO_INTERNAL_SECRET=${VIDEO_INTERNAL_SECRET:?Define VIDEO_INTERNAL_SECRET in .env}
       - JWT_SECRET_KEY=lisan_al_gaib
     networks:
       - elk
@@ -483,6 +488,11 @@ services:
       VIDEO_MAX_DURATION_PREMIUM: 1800
       VIDEO_MAX_SIZE_FREE: 209715200
       VIDEO_MAX_SIZE_PREMIUM: 2147483648
+      VIDEO_INTERNAL_SECRET: ${VIDEO_INTERNAL_SECRET:?Define VIDEO_INTERNAL_SECRET in .env}
+    depends_on:
+      - users
+      - projects
+
     volumes:
       - video_data:/data
 
