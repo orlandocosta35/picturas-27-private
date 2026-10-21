@@ -21,14 +21,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   createVideoResizeTask,
   downloadVideoResizeTask,
   getVideoResizeTask,
   refundVideoOperation,
   reserveVideoOperation,
+  ResizeMode,
+  VideoOutputFormat,
 } from "@/lib/video";
-import { VideoTrimEditor } from "./video-trim-editor";
 import { useUpdateSession } from "@/lib/mutations/session";
 
 type VideoOperation = "resize" | "trim";
@@ -40,11 +42,21 @@ type VideoMetadata = {
 
 const RESOLUTION_PRESETS = [
   { label: "Original", width: null, height: null },
-  { label: "4K", width: 3840, height: 2160 },
-  { label: "Full HD", width: 1920, height: 1080 },
-  { label: "HD", width: 1280, height: 720 },
-  { label: "SD", width: 854, height: 480 },
+  { label: "Retrato 3:4", width: 1080, height: 1440 },
+  { label: "Retrato 4:5", width: 1080, height: 1350 },
+  { label: "Vertical 9:16", width: 1080, height: 1920 },
 ] as const;
+
+const RESIZE_MODES: Array<{ value: ResizeMode; label: string; description: string }> = [
+  { value: "contain", label: "Margens pretas", description: "Mantém todo o vídeo." },
+  { value: "cover", label: "Preencher com recorte", description: "Preenche a área e recorta." },
+  { value: "stretch", label: "Esticar", description: "Pode deformar a imagem." },
+];
+
+const OUTPUT_FORMATS: Array<{ value: VideoOutputFormat; label: string }> = [
+  { value: "mp4", label: "MP4 (H.264 + AAC)" },
+  { value: "webm", label: "WebM (VP9 + Opus)" },
+];
 
 const ACCEPTED_VIDEO_TYPES = ["video/mp4", "video/webm", "video/quicktime"];
 
@@ -58,6 +70,22 @@ function formatDuration(seconds: number) {
 function formatFileSize(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function aspectRatio(width: number, height: number) {
+  return width / height;
+}
+
+function isSameAspectRatio(
+  sourceWidth: number,
+  sourceHeight: number,
+  targetWidth: number,
+  targetHeight: number,
+) {
+  return Math.abs(
+    aspectRatio(sourceWidth, sourceHeight) -
+      aspectRatio(targetWidth, targetHeight),
+  ) < 0.01;
 }
 
 export function VideoEditor({
@@ -82,6 +110,9 @@ export function VideoEditor({
   const [endSeconds, setEndSeconds] = useState(0);
   const [width, setWidth] = useState(1280);
   const [height, setHeight] = useState(720);
+  const [resizeMode, setResizeMode] = useState<ResizeMode>("contain");
+  const [outputFormat, setOutputFormat] = useState<VideoOutputFormat>("mp4");
+  const [customResolution, setCustomResolution] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
@@ -151,21 +182,64 @@ export function VideoEditor({
     setHeight(nextMetadata.height);
   };
 
+  const selectResolution = (nextWidth: number | null, nextHeight: number | null) => {
+    if (nextWidth === null || nextHeight === null) {
+      setCustomResolution(false);
+      setWidth(metadata?.width ?? width);
+      setHeight(metadata?.height ?? height);
+      return;
+    }
+    setCustomResolution(false);
+    setWidth(nextWidth);
+    setHeight(nextHeight);
+  };
+
   const handleProcess = () => {
     if (!file || !metadata) return;
     if (operation === "trim" && endSeconds <= startSeconds) {
       setError("O fim do recorte deve ser posterior ao início.");
       return;
     }
-    if (operation === "resize" && (width < 1 || height < 1)) {
-      setError("A resolução deve ter valores positivos.");
-      return;
-    }
-
     if (operation !== "resize") {
       setError("O recorte pertence ao UC-VID-002. Seleciona Redimensionar.");
       return;
     }
+    if (
+      (!Number.isInteger(width) ||
+        !Number.isInteger(height) ||
+        width < 64 ||
+        height < 64 ||
+        width % 2 !== 0 ||
+        height % 2 !== 0)
+    ) {
+      setError("A resolução deve usar números inteiros pares de pelo menos 64 px.");
+      return;
+    }
+
+    const sourceFormat: VideoOutputFormat =
+      file.type === "video/webm" ? "webm" : "mp4";
+    const hasNoChanges =
+      width === metadata.width &&
+      height === metadata.height &&
+      outputFormat === sourceFormat;
+    if (hasNoChanges) {
+      setError(
+        "A configuração selecionada não altera o vídeo. Escolhe outra resolução ou formato.",
+      );
+      return;
+    }
+
+    const isUpscaling =
+      width > metadata.width || height > metadata.height;
+    if (
+      isUpscaling &&
+      !window.confirm(
+        "A resolução escolhida é superior à original. Esta operação não recupera detalhe e pode aumentar o tamanho do ficheiro. Queres continuar?",
+      )
+    ) {
+      return;
+    }
+
     if (!userId || !projectId || !token) {
       setError("É necessário iniciar sessão para processar o vídeo.");
       return;
@@ -182,8 +256,8 @@ export function VideoEditor({
         createVideoResizeTask(userId, projectId, token, file, {
           width,
           height,
-          resizeMode: "contain",
-          outputFormat: "mp4",
+          resizeMode,
+          outputFormat,
         }),
       )
       .then((task) => {
@@ -230,8 +304,11 @@ export function VideoEditor({
   };
 
   const maxDuration = metadata?.duration ?? 1;
+  const aspectRatioChanged =
+    metadata !== null &&
+    !isSameAspectRatio(metadata.width, metadata.height, width, height);
 
-  const legacyEditor = (
+  return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div>
         <p className="text-sm font-medium text-primary">Fase 1 · MVP</p>
@@ -393,8 +470,12 @@ export function VideoEditor({
                       {RESOLUTION_PRESETS.map((preset) => {
                         const isSelected =
                           preset.width === null
-                            ? metadata?.width === width && metadata?.height === height
-                            : width === preset.width && height === preset.height;
+                            ? !customResolution &&
+                              metadata?.width === width &&
+                              metadata?.height === height
+                            : !customResolution &&
+                              width === preset.width &&
+                              height === preset.height;
 
                         return (
                           <Button
@@ -402,10 +483,7 @@ export function VideoEditor({
                             type="button"
                             variant={isSelected ? "default" : "outline"}
                             className="h-auto min-h-14 flex-col gap-0.5 py-2 text-center"
-                            onClick={() => {
-                              setWidth(preset.width ?? metadata?.width ?? width);
-                              setHeight(preset.height ?? metadata?.height ?? height);
-                            }}
+                            onClick={() => selectResolution(preset.width, preset.height)}
                           >
                             {preset.label}
                             {preset.width !== null && (
@@ -416,8 +494,104 @@ export function VideoEditor({
                           </Button>
                         );
                       })}
+                      <Button
+                        type="button"
+                        variant={customResolution ? "default" : "outline"}
+                        className="h-auto min-h-14 flex-col gap-0.5 py-2 text-center"
+                        onClick={() => setCustomResolution(true)}
+                      >
+                        Personalizada
+                        <span className="text-xs font-normal opacity-75">
+                          Até 3840×2160
+                        </span>
+                      </Button>
                     </div>
                   </div>
+
+                  {customResolution && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="resize-width">Largura (px)</Label>
+                        <Input
+                          id="resize-width"
+                          type="number"
+                          min={64}
+                          step={2}
+                          value={width}
+                          onChange={(event) => setWidth(Number(event.target.value))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="resize-height">Altura (px)</Label>
+                        <Input
+                          id="resize-height"
+                          type="number"
+                          min={64}
+                          step={2}
+                          value={height}
+                          onChange={(event) => setHeight(Number(event.target.value))}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label>Modo de ajuste</Label>
+                    <div className="grid gap-2">
+                      {RESIZE_MODES.map((mode) => (
+                        <Button
+                          key={mode.value}
+                          type="button"
+                          variant={resizeMode === mode.value ? "default" : "outline"}
+                          className="h-auto justify-start py-2 text-left"
+                          onClick={() => setResizeMode(mode.value)}
+                        >
+                          <span>
+                            <span className="block">{mode.label}</span>
+                            <span className="block text-xs font-normal opacity-75">
+                              {mode.description}
+                            </span>
+                          </span>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="resize-format">Formato de saída</Label>
+                    <select
+                      id="resize-format"
+                      value={outputFormat}
+                      onChange={(event) =>
+                        setOutputFormat(event.target.value as VideoOutputFormat)
+                      }
+                      className="flex h-10 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      {OUTPUT_FORMATS.map((format) => (
+                        <option key={format.value} value={format.value}>
+                          {format.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <p className="text-sm text-muted-foreground">
+                    Configuração: {width} × {height} ·{" "}
+                    {RESIZE_MODES.find((mode) => mode.value === resizeMode)?.label} ·{" "}
+                    {outputFormat.toUpperCase()}
+                  </p>
+
+                  {aspectRatioChanged && (
+                    <Alert>
+                      <AlertTitle>Relação de aspeto diferente</AlertTitle>
+                      <AlertDescription>
+                        O vídeo original tem uma proporção diferente da resolução
+                        destino. Escolhe o modo de ajuste: margens pretas preserva
+                        todo o conteúdo, preencher com recorte pode cortar as
+                        margens e esticar pode deformar a imagem.
+                      </AlertDescription>
+                    </Alert>
+                  )}
                 </div>
               )}
 
@@ -474,6 +648,4 @@ export function VideoEditor({
       )}
     </div>
   );
-  return operation === "trim" ? <VideoTrimEditor initialFile={initialFile} userId={userId}
-    projectId={projectId} token={token} onResize={() => setOperation("resize")} /> : legacyEditor;
 }
