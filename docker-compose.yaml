@@ -474,6 +474,15 @@ services:
     restart: on-failure
     networks:
       - elk
+    environment:
+      VIDEO_MAX_WIDTH_FREE: 1920
+      VIDEO_MAX_HEIGHT_FREE: 1080
+      VIDEO_MAX_WIDTH_PREMIUM: 3840
+      VIDEO_MAX_HEIGHT_PREMIUM: 2160
+      VIDEO_MAX_DURATION_FREE: 300
+      VIDEO_MAX_DURATION_PREMIUM: 1800
+      VIDEO_MAX_SIZE_FREE: 209715200
+      VIDEO_MAX_SIZE_PREMIUM: 2147483648
     volumes:
       - video_data:/data
 
