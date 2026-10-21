@@ -12,6 +12,9 @@ export async function refundVideoOperation(userId: string, token: string) {
   });
 }
 
+export type ResizeMode = "contain" | "cover" | "stretch";
+export type VideoOutputFormat = "mp4" | "webm";
+
 export type VideoResizeTask = {
   id: string;
   status: "queued" | "processing" | "completed" | "failed";
@@ -28,8 +31,8 @@ export async function createVideoResizeTask(
   params: {
     width: number;
     height: number;
-    resizeMode: string;
-    outputFormat: string;
+    resizeMode: ResizeMode;
+    outputFormat: VideoOutputFormat;
   },
 ) {
   const body = new FormData();
