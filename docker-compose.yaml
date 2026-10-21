@@ -489,6 +489,12 @@ services:
       VIDEO_MAX_SIZE_FREE: 209715200
       VIDEO_MAX_SIZE_PREMIUM: 2147483648
       VIDEO_INTERNAL_SECRET: ${VIDEO_INTERNAL_SECRET:?Define VIDEO_INTERNAL_SECRET in .env}
+      VIDEO_USERS_URL: https://users:10001
+      VIDEO_PROJECTS_URL: https://projects:9001/internal/video
+      VIDEO_RESULTS_ROOT: /video-tasks/tasks
+      VIDEO_TASK_RETENTION_SECONDS: 86400
+      VIDEO_FAILED_TASK_RETENTION_SECONDS: 3600
+      VIDEO_TASK_CLEANUP_INTERVAL_SECONDS: 300
     depends_on:
       - users
       - projects

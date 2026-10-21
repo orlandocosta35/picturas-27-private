@@ -1,5 +1,10 @@
 import { api } from "./axios";
 
+/*
+ * Resize quota is reserved by the video service after it verifies the
+ * authenticated profile and associates the reservation with the task.
+ */
+/*
 export async function reserveVideoOperation(userId: string, token: string) {
   await api.get(`/users/${userId}/process/1`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -11,15 +16,23 @@ export async function refundVideoOperation(userId: string, token: string) {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
+*/
 
 export type ResizeMode = "contain" | "cover" | "stretch";
 export type VideoOutputFormat = "mp4" | "webm";
+export type VideoTaskError = {
+  code: string;
+  message: string;
+  retryable: boolean;
+};
 
 export type VideoResizeTask = {
   id: string;
-  status: "queued" | "processing" | "completed" | "failed";
+  status: "queued" | "processing" | "completed" | "failed" | "cancelled";
   progress: number;
-  error?: string;
+  stage?: "queued" | "encoding" | "saving" | "completed" | "failed" | "cancelled";
+  message?: string;
+  error?: VideoTaskError | string | null;
   downloadName?: string;
 };
 
@@ -61,6 +74,19 @@ export async function getVideoResizeTask(
   return response.data;
 }
 
+export async function cancelVideoResizeTask(
+  userId: string,
+  projectId: string,
+  token: string,
+  taskId: string,
+) {
+  const response = await api.delete<VideoResizeTask>(
+    `/projects/${userId}/${projectId}/video/tasks/${taskId}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  return response.data;
+}
+
 export async function downloadVideoResizeTask(
   userId: string,
   projectId: string,
@@ -85,6 +111,7 @@ export type TrimPlan = {
 };
 export type VideoTrimTask = Omit<VideoResizeTask, "status"> & {
   status: VideoResizeTask["status"] | "cancelled";
+  error?: string;
   effectiveStartSeconds: number;
   effectiveEndSeconds: number;
   mode: TrimMode;

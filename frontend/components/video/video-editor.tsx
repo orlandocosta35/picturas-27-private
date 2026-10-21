@@ -23,11 +23,10 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
+  cancelVideoResizeTask,
   createVideoResizeTask,
   downloadVideoResizeTask,
   getVideoResizeTask,
-  refundVideoOperation,
-  reserveVideoOperation,
   ResizeMode,
   VideoOutputFormat,
 } from "@/lib/video";
@@ -117,7 +116,7 @@ export function VideoEditor({
   const [progress, setProgress] = useState<number | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
-  const operationReservedRef = useRef(false);
+  const communicationFailuresRef = useRef(0);
   const updateSession = useUpdateSession();
 
   useEffect(() => {
@@ -248,59 +247,83 @@ export function VideoEditor({
     setError(null);
     setProgress(0);
     setDownloadUrl(null);
-    reserveVideoOperation(userId, token)
-      .then(() => {
-        operationReservedRef.current = true;
-      })
-      .then(() =>
-        createVideoResizeTask(userId, projectId, token, file, {
-          width,
-          height,
-          resizeMode,
-          outputFormat,
-        }),
-      )
+    createVideoResizeTask(userId, projectId, token, file, {
+      width,
+      height,
+      resizeMode,
+      outputFormat,
+    })
       .then((task) => {
         setTaskId(task.id);
+        communicationFailuresRef.current = 0;
         progressTimerRef.current = window.setInterval(async () => {
           try {
             const current = await getVideoResizeTask(userId, projectId, token, task.id);
+            communicationFailuresRef.current = 0;
+            setError(null);
             setProgress(current.progress);
             if (current.status === "completed") {
               if (progressTimerRef.current !== null) window.clearInterval(progressTimerRef.current);
               const result = await downloadVideoResizeTask(userId, projectId, token, task.id);
               setDownloadUrl(URL.createObjectURL(result));
+              setTaskId(null);
               updateSession.mutate({ userId, token });
-            } else if (current.status === "failed") {
+            } else if (current.status === "failed" || current.status === "cancelled") {
               if (progressTimerRef.current !== null) window.clearInterval(progressTimerRef.current);
-              if (operationReservedRef.current) {
-                operationReservedRef.current = false;
-                void refundVideoOperation(userId, token).finally(() => {
-                  updateSession.mutate({ userId, token });
-                });
-              }
-              setError(current.error ?? "O processamento do vídeo falhou.");
+              setTaskId(null);
+              setProgress(null);
+              setError(
+                current.status === "cancelled"
+                  ? "O processamento do vídeo foi cancelado."
+                  : typeof current.error === "string"
+                    ? current.error
+                    : current.error?.message ?? "O processamento do vídeo falhou.",
+              );
             }
           } catch {
-            if (progressTimerRef.current !== null) window.clearInterval(progressTimerRef.current);
-            setError("Não foi possível consultar o progresso do processamento.");
+            communicationFailuresRef.current += 1;
+            if (communicationFailuresRef.current >= 5) {
+              if (progressTimerRef.current !== null) window.clearInterval(progressTimerRef.current);
+              setError("Não foi possível atualizar o progresso. Tenta novamente.");
+            } else {
+              setError("A ligação foi interrompida. A tentar novamente...");
+            }
           }
         }, 1000);
       })
       .catch((error) => {
-        if (operationReservedRef.current) {
-          operationReservedRef.current = false;
-          void refundVideoOperation(userId, token).finally(() => {
-            updateSession.mutate({ userId, token });
-          });
-        }
         setProgress(null);
+        setTaskId(null);
         setError(
-          error?.response?.status === 701
+          error?.response?.status === 701 ||
+          error?.response?.data?.error?.code === "QUOTA_EXCEEDED"
             ? "Atingiste o limite diário de operações."
-            : "Não foi possível iniciar o processamento do vídeo.",
+            : error?.response?.data?.error?.message ??
+              "Não foi possível iniciar o processamento do vídeo.",
         );
       });
+  };
+
+  const cancelProcessing = async () => {
+    if (!taskId || !userId || !projectId || !token) return;
+    try {
+      const task = await cancelVideoResizeTask(userId, projectId, token, taskId);
+      if (progressTimerRef.current !== null) {
+        window.clearInterval(progressTimerRef.current);
+      }
+      setError(
+        task.status === "cancelled"
+          ? "O processamento do vídeo foi cancelado."
+          : typeof task.error === "string"
+            ? task.error
+            : task.error?.message ?? null,
+      );
+      setTaskId(null);
+      setProgress(null);
+      updateSession.mutate({ userId, token });
+    } catch {
+      setError("Não foi possível cancelar o processamento do vídeo.");
+    }
   };
 
   const maxDuration = metadata?.duration ?? 1;
@@ -605,7 +628,11 @@ export function VideoEditor({
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span>
-                      {progress === 100 ? "Pré-visualização concluída" : "A processar..."}
+                      {progress === 100
+                        ? "Processamento concluído"
+                        : progress >= 99
+                          ? "A guardar o resultado..."
+                          : "A processar..."}
                     </span>
                     <span>{progress}%</span>
                   </div>
@@ -627,6 +654,15 @@ export function VideoEditor({
                 )}
                 {progress === 100 ? "Concluído" : "Processar vídeo"}
               </Button>
+              {taskId && progress !== null && progress < 100 && (
+                <Button
+                  className="w-full"
+                  variant="outline"
+                  onClick={cancelProcessing}
+                >
+                  Cancelar processamento
+                </Button>
+              )}
               {downloadUrl && (
                 <a
                   className="inline-flex w-full items-center justify-center rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted"

@@ -283,7 +283,7 @@ export function VideoTrimEditor({
                   ref={video}
                   src={url}
                   controls
-                  className="w-full rounded bg-black"
+                  className="max-h-[60vh] w-full rounded bg-black object-contain"
                   onLoadedMetadata={(e) => {
                     const d = e.currentTarget.duration;
                     setDuration(d);

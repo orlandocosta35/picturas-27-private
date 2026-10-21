@@ -25,6 +25,7 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
 const projectsURL = "https://projects:9001/";
+const usersURL = "https://users:10001/";
 const videoURL = "http://video_processing:12000";
 
 const videoUpload = multer({ storage: multer.memoryStorage() });
@@ -44,12 +45,18 @@ router.post(
       filename: req.file.originalname,
       contentType: req.file.mimetype,
     });
-    for (const field of ["width", "height", "resizeMode", "outputFormat", "premium"]) {
+    for (const field of ["width", "height", "resizeMode", "outputFormat"]) {
       if (req.body[field] !== undefined) form.append(field, String(req.body[field]));
     }
     form.append("userId", String(req.authUserId || req.params.user));
+    form.append("projectId", String(req.params.project));
 
     try {
+      const profile = await axios.get(
+        `${usersURL}${req.authUserId || req.params.user}/type/`,
+        { httpsAgent },
+      );
+      form.append("profile", profile.data.type);
       const response = await axios.post(`${videoURL}/video/resize`, form, {
         headers: form.getHeaders(),
         maxBodyLength: Infinity,
@@ -58,6 +65,25 @@ router.post(
       return res.status(response.status).json(response.data);
     } catch (error) {
       return forwardAxiosError(res, error, "Video processing service unavailable");
+    }
+  },
+);
+
+router.delete(
+  "/:user/:project/video/tasks/:taskId",
+  auth.checkToken,
+  async (req, res) => {
+    if (String(req.authUserId || req.params.user) !== String(req.params.user)) {
+      return res.status(403).json({ error: "Not allowed" });
+    }
+    try {
+      const response = await axios.delete(
+        `${videoURL}/video/tasks/${req.params.taskId}`,
+        { params: { userId: req.authUserId || req.params.user } },
+      );
+      return res.status(response.status).json(response.data);
+    } catch (error) {
+      return forwardAxiosError(res, error, "Unable to cancel video task");
     }
   },
 );
