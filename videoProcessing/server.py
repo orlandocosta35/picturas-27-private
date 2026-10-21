@@ -366,3 +366,7 @@ def download_task(task_id):
     if not output.exists():
         return jsonify(error="Result file is missing"), 404
     return send_file(output, as_attachment=True, download_name=task["downloadName"])
+
+# UC2 is registered separately; the existing resize routes stay unchanged.
+from trim_integration import register_trim
+register_trim(app, TASK_ROOT)
