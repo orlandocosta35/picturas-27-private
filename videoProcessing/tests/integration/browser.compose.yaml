@@ -1,0 +1,14 @@
+services:
+  frontend:
+    image: picturas-frontend:latest
+    entrypoint: sh
+    command: /source/videoProcessing/tests/integration/prepare-ui.sh
+    ports: ["127.0.0.1:19080:3000"]
+    environment:
+      NEXT_TELEMETRY_DISABLED: '1'
+    volumes:
+      - ../../..:/source:ro
+      - workspace:/validation
+    networks: [validation, browser]
+networks:
+  browser: {}

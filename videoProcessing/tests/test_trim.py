@@ -279,6 +279,35 @@ class TrimTests(unittest.TestCase):
         self.assertFalse(self.ledger.committed)
         self.assertEqual(list(self.service.root.iterdir()), [])
 
+    def test_task_discovery_is_scoped_to_user_and_project(self):
+        response = self.submit()
+        task_id = response.get_json()["id"]
+        self.wait(task_id)
+        visible = self.client.get("/video/trim/tasks").get_json()
+        self.assertEqual([t["id"] for t in visible], [task_id])
+        self.assertFalse(any(key.startswith("_") for key in visible[0]))
+        self.context = TrimContext("alice", "free", "other-project")
+        self.assertEqual(self.client.get("/video/trim/tasks").get_json(), [])
+
+    def test_failed_compensation_is_retried_without_restart(self):
+        original_abort = self.ledger.abort
+        def unavailable(*args):
+            raise RuntimeError("quota offline")
+        def fail(*args):
+            raise TrimError("PUBLICATION_FAILED", "Publication failed", 503)
+        self.service.hooks = TrimHooks(self.ledger.accept, fail, unavailable)
+        with self.assertLogs("trim", level="ERROR"):
+            response = self.submit()
+            task = self.wait(response.get_json()["id"])
+            # Wait for the worker's compensation/cleanup, not just failed status.
+            self.service._executor.submit(lambda: None).result(timeout=5)
+        journal = self.service.root / task["id"] / "task.json"
+        self.assertTrue(json.loads(journal.read_text())["_abortPending"])
+        self.service.hooks = TrimHooks(self.ledger.accept, fail, original_abort)
+        self.service.retry_pending()
+        self.assertNotIn("_abortPending", json.loads(journal.read_text()))
+        self.assertFalse(self.ledger.reserved)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

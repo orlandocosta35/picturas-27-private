@@ -1,0 +1,68 @@
+name: picturas-uc2-validation
+services:
+  uc2-mongo:
+    image: mongo:4.4
+    networks: [validation]
+    tmpfs: [/data/db, /data/configdb]
+  services:
+    image: picturas-users:latest
+    entrypoint: node
+    command: /source/videoProcessing/tests/integration/harness.js
+    environment: &env
+      NODE_PATH: /app/node_modules
+      VIDEO_INTERNAL_SECRET: uc2-test-internal-secret
+      JWT_SECRET_KEY: uc2-test-jwt-secret
+      FREE_DAILY_OP: '5'
+      FIELD_ENCRYPTION_KEY: uc2-test-field-secret
+      VIDEO_LIBRARY_ROOT: /results
+      TEST_ROLE: users
+    volumes: &mounts
+      - ../../..:/source:ro
+      - workspace:/validation
+      - tasks:/video-tasks:ro
+      - results:/results
+    networks:
+      validation:
+        aliases: [users]
+    depends_on: [uc2-mongo]
+  projects:
+    image: picturas-projects:latest
+    entrypoint: node
+    command: /source/videoProcessing/tests/integration/harness.js
+    environment:
+      <<: *env
+      TEST_ROLE: projects
+    volumes: *mounts
+    networks: [validation]
+    depends_on: [uc2-mongo]
+  api_gateway:
+    image: picturas-api_gateway:latest
+    entrypoint: node
+    command: /source/videoProcessing/tests/integration/harness.js
+    environment:
+      <<: *env
+      TEST_ROLE: gateway
+    volumes: *mounts
+    networks: [validation]
+    depends_on: [services, projects]
+  video_processing:
+    build:
+      context: ../..
+    image: picturas-video-trim-test:local
+    entrypoint: python
+    command: -c "import sys; sys.path.insert(0, '/source/videoProcessing'); from server import app; app.run(host='0.0.0.0', port=12000, threaded=True)"
+    environment:
+      VIDEO_INTERNAL_SECRET: uc2-test-internal-secret
+    volumes:
+      - ../../..:/source:ro
+      - workspace:/validation
+      - tasks:/data
+    networks: [validation]
+    depends_on: [services, projects]
+networks:
+  validation:
+    internal: true
+volumes:
+  workspace:
+  tasks:
+  results:

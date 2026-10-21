@@ -1,5 +1,6 @@
 var express = require("express");
 var router = express.Router();
+router.use(require("./videoTrim"));
 
 const axios = require("axios");
 

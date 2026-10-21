@@ -28,6 +28,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
 
+app.use("/internal/video-quota", require("./routes/videoQuota"));
 app.use("/", usersRouter);
 app.use("/", presetsRouter);
 

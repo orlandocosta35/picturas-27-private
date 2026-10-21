@@ -28,6 +28,7 @@ import {
   refundVideoOperation,
   reserveVideoOperation,
 } from "@/lib/video";
+import { VideoTrimEditor } from "./video-trim-editor";
 import { useUpdateSession } from "@/lib/mutations/session";
 
 type VideoOperation = "resize" | "trim";
@@ -230,7 +231,7 @@ export function VideoEditor({
 
   const maxDuration = metadata?.duration ?? 1;
 
-  return (
+  const legacyEditor = (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div>
         <p className="text-sm font-medium text-primary">Fase 1 · MVP</p>
@@ -473,4 +474,6 @@ export function VideoEditor({
       )}
     </div>
   );
+  return operation === "trim" ? <VideoTrimEditor initialFile={initialFile} userId={userId}
+    projectId={projectId} token={token} onResize={() => setOperation("resize")} /> : legacyEditor;
 }

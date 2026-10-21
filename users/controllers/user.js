@@ -20,7 +20,10 @@ module.exports.getAll = async () => {
 
 module.exports.getOne = async (user_id) => {
   const user = await User.findOne({ _id: user_id }).exec();
-  return user ? user.toJSON() : null;
+  if (!user) return null;
+  const day = require("../services/operationQuota").today();
+  return { ...user.toJSON(), reserved_video_operations: (user.videoReservations || [])
+    .filter(r => r.status === "reserved" && r.charged && r.day.getTime() === day.getTime()).length };
 };
 
 module.exports.getOneEmail = async (email) => {
@@ -46,11 +49,14 @@ module.exports.create = async (user) => {
 module.exports.updatePassword = async (user_id, user) => {
   const encrypt_user = await encrypt_password(user);
 
+  delete encrypt_user.operations;
+  delete encrypt_user.videoReservations;
   return User.updateOne({ _id: user_id }, encrypt_user);
 };
 
 module.exports.update = async (user_id, user) => {
-  return User.updateOne({ _id: user_id }, user);
+  const { operations, videoReservations, ...profile } = user;
+  return User.updateOne({ _id: user_id }, profile);
 };
 
 module.exports.delete = (user_id) => {

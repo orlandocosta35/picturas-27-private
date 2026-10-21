@@ -31,6 +31,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
 
+app.use("/internal/video", require("./routes/videoResults"));
 app.use("/", projectsRouter);
 
 // Start the message processing

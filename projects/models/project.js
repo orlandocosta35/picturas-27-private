@@ -25,6 +25,11 @@ const projectSchema = new mongoose.Schema({
   imgs: { type: [imgSchema], default: [] },
   type: { type: String, enum: ["image", "video"], default: "image" },
   video: { type: videoSchema, default: null },
+  videoResults: { type: [{
+    id: String, status: { type: String, enum: ["published", "released"] },
+    name: String, format: String, path: String, createdAt: Date,
+    metadata: mongoose.Schema.Types.Mixed,
+  }], default: [] },
   tools: { type: [toolSchema], default: [] },
   version: { type: Number, default: 0 },
   activeToken: { type: Number, default: 0 },
