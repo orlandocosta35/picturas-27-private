@@ -1,4 +1,8 @@
-"""Trusted gateway context and idempotent adapters for users/projects."""
+"""Trusted gateway context and idempotent adapters for users/projects.
+
+Shared by trim (UC2) and concat (UC5); each uses its own JWT audience and its
+own results folder, which projects reads when publishing (field "kind").
+"""
 import atexit
 import base64
 import hashlib
@@ -10,13 +14,32 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from flask import request
+from concat import ConcatService, create_concat_blueprint
 from trim import TrimContext, TrimError, TrimHooks, TrimService, create_trim_blueprint
 
 
 def register_trim(app, task_root):
+    hooks, context = _integration('video-trim', 'trim')
+    service = TrimService(task_root, hooks)
+    app.register_blueprint(create_trim_blueprint(service, context))
+    app.extensions['video_trim'] = service
+    atexit.register(service.close)
+    return service
+
+
+def register_concat(app, task_root):
+    hooks, context = _integration('video-concat', 'concat')
+    service = ConcatService(task_root, hooks)
+    app.register_blueprint(create_concat_blueprint(service, context))
+    app.extensions['video_concat'] = service
+    atexit.register(service.close)
+    return service
+
+
+def _integration(audience, kind):
     secret = os.environ.get('VIDEO_INTERNAL_SECRET', '')
     if not secret:
-        raise RuntimeError('VIDEO_INTERNAL_SECRET is required for trim integration')
+        raise RuntimeError(f'VIDEO_INTERNAL_SECRET is required for {kind} integration')
     users = os.environ.get('VIDEO_USERS_URL', 'https://users:10001')
     projects = os.environ.get('VIDEO_PROJECTS_URL', 'https://projects:9001/internal/video')
     # Existing internal services use self-signed TLS certificates.
@@ -51,7 +74,7 @@ def register_trim(app, task_root):
         quota(ctx, task, 'reserve')
 
     def complete(ctx, task, output):
-        call(result_url(ctx, task), {'format': task['outputFormat'],
+        call(result_url(ctx, task), {'kind': kind, 'format': task['outputFormat'],
              'name': task['downloadName'], 'metadata': task['result']})
         quota(ctx, task, 'commit')
 
@@ -78,7 +101,7 @@ def register_trim(app, task_root):
             metadata, claims = json.loads(decode(header)), json.loads(decode(payload))
             expected = hmac.new(secret.encode(), f'{header}.{payload}'.encode(), hashlib.sha256).digest()
             if (metadata.get('alg') != 'HS256' or not hmac.compare_digest(expected, decode(signature))
-                    or claims['exp'] <= time.time() or claims.get('aud') != 'video-trim'):
+                    or claims['exp'] <= time.time() or claims.get('aud') != audience):
                 raise ValueError
             import re
             if not all(re.fullmatch(r'[a-fA-F0-9]{24}', claims[key]) for key in ('user_id', 'project_id')):
@@ -87,8 +110,4 @@ def register_trim(app, task_root):
         except (ValueError, KeyError, TypeError, AttributeError):
             raise TrimError('AUTHENTICATION_REQUIRED', 'Credenciais de vídeo inválidas ou expiradas.', 401) from None
 
-    service = TrimService(task_root, TrimHooks(accept, complete, abort))
-    app.register_blueprint(create_trim_blueprint(service, context))
-    app.extensions['video_trim'] = service
-    atexit.register(service.close)
-    return service
+    return TrimHooks(accept, complete, abort), context

@@ -770,7 +770,8 @@ def download_task(task_id):
     return send_file(output, as_attachment=True, download_name=task["downloadName"])
 
 # UC2 is registered separately; the existing resize routes stay unchanged.
-from trim_integration import register_trim
+from trim_integration import register_concat, register_trim
 register_trim(app, TASK_ROOT)
+register_concat(app, TASK_ROOT)
 recover_tasks()
 threading.Thread(target=maintenance_loop, name="video-task-cleanup", daemon=True).start()

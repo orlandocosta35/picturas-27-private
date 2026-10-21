@@ -221,11 +221,14 @@ class TrimService:
     cancellation; complete must roll back its own side effects if it raises.
     """
 
+    # Subclasses (e.g. concat) override this to keep their task files apart.
+    namespace = "trim"
+
     def __init__(self, task_root, hooks, timeout_seconds=1800):
         if not isinstance(hooks, TrimHooks) or not all(callable(x) for x in (hooks.accept, hooks.complete, hooks.abort)):
             raise ValueError("TrimHooks com accept, complete e abort são obrigatórios")
         # A private namespace prevents touching the resize service's task files.
-        self.root = Path(task_root) / "trim"
+        self.root = Path(task_root) / self.namespace
         self.root.mkdir(parents=True, exist_ok=True)
         self.hooks = hooks
         self.timeout = timeout_seconds
