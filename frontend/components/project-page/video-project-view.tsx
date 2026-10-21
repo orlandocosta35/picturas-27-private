@@ -46,7 +46,7 @@ export function VideoProjectView({
 
   if (editing && videoFile) {
     return (
-      <div className="min-h-full p-8">
+      <div className="h-full overflow-y-auto p-8">
         <Button variant="outline" className="mb-6" onClick={() => setEditing(false)}>
           Voltar ao projeto
         </Button>
