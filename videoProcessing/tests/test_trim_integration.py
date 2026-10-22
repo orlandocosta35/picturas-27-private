@@ -15,8 +15,8 @@ from urllib.error import HTTPError
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flask import Flask
-from trim import TrimContext, TrimError
-from trim_integration import register_trim
+from use_cases.trim import TrimContext, TrimError
+from use_cases.trim_integration import register_trim
 
 
 class IntegrationAdapterTests(unittest.TestCase):
@@ -64,7 +64,7 @@ class IntegrationAdapterTests(unittest.TestCase):
         def respond(request, **kwargs):
             calls.append(request)
             return io.BytesIO(b'{"ok":true}')
-        with patch('trim_integration.urlopen', side_effect=respond):
+        with patch('utils.integration.urlopen', side_effect=respond):
             self.service.hooks.complete(self.context, self.task, Path('unused'))
         self.assertIn('/results/', calls[0].full_url)
         self.assertTrue(calls[1].full_url.endswith('/commit'))
@@ -78,7 +78,7 @@ class IntegrationAdapterTests(unittest.TestCase):
             if '/results/' in request.full_url:
                 raise HTTPError(request.full_url, 503, 'unavailable', {}, io.BytesIO(b'{}'))
             return io.BytesIO(b'{"ok":true}')
-        with patch('trim_integration.urlopen', side_effect=respond):
+        with patch('utils.integration.urlopen', side_effect=respond):
             with self.assertRaises(TrimError):
                 self.service.hooks.abort(self.context, self.task)
         self.assertTrue(urls[-1].endswith('/release'))

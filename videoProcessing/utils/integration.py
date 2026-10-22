@@ -1,4 +1,4 @@
-"""Trusted gateway context and idempotent adapters for users/projects."""
+"""Trusted gateway context and shared quota/library adapters."""
 import atexit
 import base64
 import hashlib
@@ -10,13 +10,12 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from flask import request
-from trim import TrimContext, TrimError, TrimHooks, TrimService, create_trim_blueprint
+from .common import VideoContext, VideoError, VideoHooks
 
-
-def register_trim(app, task_root):
+def register_video_service(app, task_root, service_type, blueprint_factory, operation):
     secret = os.environ.get('VIDEO_INTERNAL_SECRET', '')
     if not secret:
-        raise RuntimeError('VIDEO_INTERNAL_SECRET is required for trim integration')
+        raise RuntimeError('VIDEO_INTERNAL_SECRET is required for video integration')
     users = os.environ.get('VIDEO_USERS_URL', 'https://users:10001')
     projects = os.environ.get('VIDEO_PROJECTS_URL', 'https://projects:9001/internal/video')
     # Existing internal services use self-signed TLS certificates.
@@ -34,11 +33,11 @@ def register_trim(app, task_root):
                 details = json.loads(error.read(65536))
             except (ValueError, OSError):
                 details = {}
-            raise TrimError(details.get('code', 'INTEGRATION_FAILED'),
+            raise VideoError(details.get('code', 'INTEGRATION_FAILED'),
                             details.get('error', 'Não foi possível guardar o resultado ou atualizar a quota.'),
                             error.code) from None
         except (URLError, TimeoutError, OSError):
-            raise TrimError('INTEGRATION_UNAVAILABLE', 'Serviço de projetos ou quota indisponível.', 503) from None
+            raise VideoError('INTEGRATION_UNAVAILABLE', 'Serviço de projetos ou quota indisponível.', 503) from None
 
     def quota(ctx, task, action):
         return call(f'{users}/internal/video-quota/{ctx.user_id}/{task["id"]}/{action}',
@@ -52,7 +51,8 @@ def register_trim(app, task_root):
 
     def complete(ctx, task, output):
         call(result_url(ctx, task), {'format': task['outputFormat'],
-             'name': task['downloadName'], 'metadata': task['result']})
+             'name': task['downloadName'], 'processor': operation,
+             'metadata': {**task['result'], 'processor': operation, 'operation': task.get('operation', operation)}})
         quota(ctx, task, 'commit')
 
     def abort(ctx, task):
@@ -60,12 +60,12 @@ def register_trim(app, task_root):
         errors = []
         try:
             call(result_url(ctx, task), method='DELETE')
-        except TrimError as error:
+        except VideoError as error:
             if error.status != 404:
                 errors.append(error)
         try:
             quota(ctx, task, 'release')
-        except TrimError as error:
+        except VideoError as error:
             errors.append(error)
         if errors:
             raise errors[0]
@@ -78,17 +78,17 @@ def register_trim(app, task_root):
             metadata, claims = json.loads(decode(header)), json.loads(decode(payload))
             expected = hmac.new(secret.encode(), f'{header}.{payload}'.encode(), hashlib.sha256).digest()
             if (metadata.get('alg') != 'HS256' or not hmac.compare_digest(expected, decode(signature))
-                    or claims['exp'] <= time.time() or claims.get('aud') != 'video-trim'):
+                    or claims['exp'] <= time.time() or claims.get('aud') != f'video-{operation}'):
                 raise ValueError
             import re
             if not all(re.fullmatch(r'[a-fA-F0-9]{24}', claims[key]) for key in ('user_id', 'project_id')):
                 raise ValueError
-            return TrimContext(claims['user_id'], claims['profile'], claims['project_id'])
+            return VideoContext(claims['user_id'], claims['profile'], claims['project_id'])
         except (ValueError, KeyError, TypeError, AttributeError):
-            raise TrimError('AUTHENTICATION_REQUIRED', 'Credenciais de vídeo inválidas ou expiradas.', 401) from None
+            raise VideoError('AUTHENTICATION_REQUIRED', 'Credenciais de vídeo inválidas ou expiradas.', 401) from None
 
-    service = TrimService(task_root, TrimHooks(accept, complete, abort))
-    app.register_blueprint(create_trim_blueprint(service, context))
-    app.extensions['video_trim'] = service
+    service = service_type(task_root, VideoHooks(accept, complete, abort))
+    app.register_blueprint(blueprint_factory(service, context))
+    app.extensions[f'video_{operation}'] = service
     atexit.register(service.close)
     return service

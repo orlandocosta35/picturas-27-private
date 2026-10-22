@@ -28,10 +28,11 @@ import {
   refundVideoOperation,
   reserveVideoOperation,
 } from "@/lib/video";
+import { VideoAudioEditor } from "./video-audio-editor";
 import { VideoTrimEditor } from "./video-trim-editor";
 import { useUpdateSession } from "@/lib/mutations/session";
 
-type VideoOperation = "resize" | "trim";
+type VideoOperation = "resize" | "trim" | "audio";
 type VideoMetadata = {
   duration: number;
   width: number;
@@ -56,8 +57,8 @@ function formatDuration(seconds: number) {
 }
 
 function formatFileSize(bytes: number) {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
 export function VideoEditor({
@@ -332,6 +333,8 @@ export function VideoEditor({
                 </Button>
               </div>
 
+              <Button variant="outline" onClick={() => setOperation("audio")}>Gerir áudio</Button>
+
               {operation === "trim" ? (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
@@ -474,6 +477,8 @@ export function VideoEditor({
       )}
     </div>
   );
+  if (operation === "audio") return <VideoAudioEditor initialFile={initialFile} userId={userId}
+    projectId={projectId} token={token} onTrim={() => setOperation("trim")} onResize={() => setOperation("resize")} />;
   return operation === "trim" ? <VideoTrimEditor initialFile={initialFile} userId={userId}
-    projectId={projectId} token={token} onResize={() => setOperation("resize")} /> : legacyEditor;
+    projectId={projectId} token={token} onAudio={() => setOperation("audio")} onResize={() => setOperation("resize")} /> : legacyEditor;
 }

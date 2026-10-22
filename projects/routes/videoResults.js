@@ -63,10 +63,11 @@ router.get("/:user/:project/results/:task/download", (req, res) => {
 });
 router.post("/:user/:project/results/:task", async (req, res, next) => {
   const { task, user, project } = req.params;
-  const { format, name, metadata } = req.body;
+  const { format, name, metadata, processor = "trim" } = req.body;
   if (
     !/^[a-f0-9-]{36}$/i.test(task) ||
     !mime[format] ||
+    !["trim", "audio"].includes(processor) ||
     typeof name !== "string"
   )
     return res.sendStatus(400);
@@ -84,7 +85,14 @@ router.post("/:user/:project/results/:task", async (req, res, next) => {
   try {
     await fs.promises.mkdir(directory, { recursive: true });
     const source = path.join(
-      process.env.VIDEO_RESULTS_ROOT || "/video-tasks/tasks/trim",
+      processor === "trim"
+        ? process.env.VIDEO_RESULTS_ROOT || "/video-tasks/tasks/trim"
+        : path.join(
+            path.dirname(
+              process.env.VIDEO_RESULTS_ROOT || "/video-tasks/tasks/trim",
+            ),
+            "audio",
+          ),
       task,
       `result.${format}`,
     );

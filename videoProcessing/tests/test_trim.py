@@ -3,6 +3,7 @@
 import hashlib
 import io
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -15,7 +16,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flask import Flask
-from trim import TrimContext, TrimError, TrimHooks, TrimService, create_trim_blueprint, probe_video
+from use_cases.trim import TrimContext, TrimError, TrimHooks, TrimService, create_trim_blueprint, probe_video
 
 
 class Ledger:
@@ -182,8 +183,8 @@ class TrimTests(unittest.TestCase):
         response = self.submit(0, 1.5, "fast", source=self.mp4)
         self.assertEqual(response.status_code, 200)
         info = probe_video(self.mp4)
-        with patch("trim._probe_json", return_value={"frames": []}):
-            from trim import plan_trim
+        with patch("use_cases.trim._probe_json", return_value={"frames": []}):
+            from use_cases.trim import plan_trim
             with self.assertRaises(TrimError) as raised:
                 plan_trim(self.mp4, 0, 1.5, "fast", info)
             self.assertEqual(raised.exception.code, "EFFECTIVE_INTERVAL_TOO_SHORT")
@@ -215,7 +216,7 @@ class TrimTests(unittest.TestCase):
 
     def test_timeout_without_progress_kills_worker_and_refunds(self):
         self.service.timeout = 0.2
-        with patch("trim.build_trim_command", return_value=[sys.executable, "-c", "import time; time.sleep(10)"]):
+        with patch("use_cases.trim.build_trim_command", return_value=[sys.executable, "-c", "import time; time.sleep(10)"]):
             response = self.submit()
             task = self.wait(response.get_json()["id"])
             self.assertEqual(task["status"], "failed", task)
@@ -224,7 +225,7 @@ class TrimTests(unittest.TestCase):
         self.assertFalse(self.ledger.committed)
 
     def test_cancel_running_and_reject_terminal_cancellation(self):
-        with patch("trim.build_trim_command", return_value=[sys.executable, "-c", "import time; time.sleep(10)"]):
+        with patch("use_cases.trim.build_trim_command", return_value=[sys.executable, "-c", "import time; time.sleep(10)"]):
             response = self.submit()
             task_id = response.get_json()["id"]
             self.wait(task_id, {"processing"})
@@ -296,7 +297,7 @@ class TrimTests(unittest.TestCase):
         def fail(*args):
             raise TrimError("PUBLICATION_FAILED", "Publication failed", 503)
         self.service.hooks = TrimHooks(self.ledger.accept, fail, unavailable)
-        with self.assertLogs("trim", level="ERROR"):
+        with self.assertLogs("utils.tasks", level="ERROR"):
             response = self.submit()
             task = self.wait(response.get_json()["id"])
             # Wait for the worker's compensation/cleanup, not just failed status.
@@ -307,6 +308,36 @@ class TrimTests(unittest.TestCase):
         self.service.retry_pending()
         self.assertNotIn("_abortPending", json.loads(journal.read_text()))
         self.assertFalse(self.ledger.reserved)
+
+    def test_configured_size_limit_accepts_boundary_and_rejects_overflow(self):
+        size = self.mp4.stat().st_size
+        with patch.dict(os.environ, {"VIDEO_MAX_SIZE_FREE": str(size)}):
+            response = self.submit()
+            self.assertEqual(response.status_code, 202, response.get_json())
+            self.assertEqual(self.wait(response.get_json()["id"])["status"], "completed")
+        with patch.dict(os.environ, {"VIDEO_MAX_SIZE_FREE": str(size - 1)}):
+            response = self.submit()
+            self.assertEqual(response.status_code, 413)
+            self.assertEqual(response.get_json()["code"], "INPUT_TOO_LARGE")
+
+    def test_configured_duration_limit_accepts_boundary_and_rejects_overflow(self):
+        with patch.dict(os.environ, {"VIDEO_MAX_DURATION_FREE": "6"}):
+            response = self.submit()
+            self.assertEqual(response.status_code, 202, response.get_json())
+            self.assertEqual(self.wait(response.get_json()["id"])["status"], "completed")
+        with patch.dict(os.environ, {"VIDEO_MAX_DURATION_FREE": "5.9"}):
+            response = self.submit()
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.get_json()["code"], "INPUT_TOO_LONG")
+
+    def test_binary_defaults_and_profile_specific_configuration(self):
+        from use_cases.trim import profile_limits
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(profile_limits("free"), (200 * 1024 ** 2, 300))
+            self.assertEqual(profile_limits("premium"), (2 * 1024 ** 3, 1800))
+            with patch.dict(os.environ, {"VIDEO_MAX_SIZE_PREMIUM": "4096", "VIDEO_MAX_DURATION_PREMIUM": "9"}):
+                self.assertEqual(profile_limits("premium"), (4096, 9))
+                self.assertEqual(profile_limits("free"), (200 * 1024 ** 2, 300))
 
 
 if __name__ == "__main__":

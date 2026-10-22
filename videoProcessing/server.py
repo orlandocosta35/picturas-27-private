@@ -311,7 +311,7 @@ def create_resize_task():
         if temporary_input.stat().st_size > max_size:
             raise VideoValidationError(
                 "VIDEO_TOO_LARGE",
-                f"O vídeo excede o limite de {max_size // (1024 * 1024)} MB do perfil.",
+                f"O vídeo excede o limite de {max_size // (1024 * 1024)} MiB do perfil.",
             )
         video_metadata = inspect_video(temporary_input)
         if video_metadata["duration"] > max_duration:
@@ -368,5 +368,8 @@ def download_task(task_id):
     return send_file(output, as_attachment=True, download_name=task["downloadName"])
 
 # UC2 is registered separately; the existing resize routes stay unchanged.
-from trim_integration import register_trim
+from use_cases.trim_integration import register_trim
 register_trim(app, TASK_ROOT)
+
+from use_cases.audio_integration import register_audio
+register_audio(app, TASK_ROOT)

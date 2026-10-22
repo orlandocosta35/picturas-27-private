@@ -7,7 +7,9 @@ RUN apt-get update \
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-COPY server.py trim.py trim_integration.py ./
+COPY server.py ./
+COPY use_cases/ ./use_cases/
+COPY utils/ ./utils/
 
 RUN mkdir -p /data/tasks
 EXPOSE 12000
