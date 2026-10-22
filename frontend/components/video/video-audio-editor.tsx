@@ -209,7 +209,9 @@ export function VideoAudioEditor({
           refreshSession.current({ userId: userId!, token: token! });
           setError(
             current.status === "failed"
-              ? current.error || "A operação de áudio falhou."
+              ? (typeof current.error === "string"
+                  ? current.error
+                  : current.error?.message) || "A operação de áudio falhou."
               : null,
           );
           if (current.status === "completed")

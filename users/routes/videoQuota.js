@@ -10,6 +10,15 @@ router.use((req, res, next) => {
     return res.status(401).json({ error: "Internal authentication required" });
   next();
 });
+router.get("/:user/profile", async (req, res) => {
+  try {
+    const user = await require("../models/user").findById(req.params.user);
+    if (!user) return res.sendStatus(404);
+    return res.json({ type: user.type });
+  } catch (error) {
+    return res.status(500).json({ error: "Unable to read user profile" });
+  }
+});
 router.post("/:user/:task/:action", async (req, res) => {
   if (
     !/^[a-f0-9]{24}$/i.test(req.params.user) ||

@@ -1,12 +1,16 @@
 import json
 import os
 import shutil
+import ssl
 import subprocess
 import tempfile
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from flask import Flask, jsonify, request, send_file
 
@@ -23,6 +27,22 @@ MAX_FREE_SIZE = int(os.environ.get("VIDEO_MAX_SIZE_FREE", str(200 * 1024 * 1024)
 MAX_PREMIUM_SIZE = int(os.environ.get("VIDEO_MAX_SIZE_PREMIUM", str(2 * 1024 * 1024 * 1024)))
 ALLOWED_INPUTS = {"video/mp4", "video/webm", "video/quicktime"}
 ALLOWED_OUTPUTS = {"mp4", "webm"}
+VIDEO_INTERNAL_SECRET = os.environ.get("VIDEO_INTERNAL_SECRET", "")
+VIDEO_USERS_URL = os.environ.get("VIDEO_USERS_URL", "https://users:10001")
+VIDEO_PROJECTS_URL = os.environ.get(
+    "VIDEO_PROJECTS_URL", "https://projects:9001/internal/video"
+)
+TASK_RETENTION_SECONDS = int(os.environ.get("VIDEO_TASK_RETENTION_SECONDS", "86400"))
+FAILED_TASK_RETENTION_SECONDS = int(
+    os.environ.get("VIDEO_FAILED_TASK_RETENTION_SECONDS", "3600")
+)
+CLEANUP_INTERVAL_SECONDS = int(
+    os.environ.get("VIDEO_TASK_CLEANUP_INTERVAL_SECONDS", "300")
+)
+TASK_LOCKS = {}
+TASK_LOCKS_GUARD = threading.Lock()
+RUNNING_TASKS = set()
+RUNNING_TASKS_GUARD = threading.Lock()
 SUPPORTED_CONTAINERS = {
     "mp4": {"container": "mp4", "video": {"h264"}, "audio": {"aac"}},
     "webm": {"container": "webm", "video": {"vp9"}, "audio": {"opus"}},
@@ -34,6 +54,37 @@ class VideoValidationError(Exception):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+class VideoProcessingError(Exception):
+    def __init__(self, code, message, retryable=False):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+        self.retryable = retryable
+
+
+def task_error(code, message, retryable=False):
+    return {
+        "code": code,
+        "message": message,
+        "retryable": retryable,
+    }
+
+
+def error_from_exception(error):
+    if isinstance(error, VideoProcessingError):
+        return task_error(error.code, error.message, error.retryable)
+    return task_error(
+        "PROCESSING_FAILED",
+        "O vídeo não pôde ser processado.",
+        False,
+    )
+
+
+def update_task(task, **changes):
+    task.update(changes)
+    write_task(task)
 
 
 def now():
@@ -48,13 +99,242 @@ def read_task(task_id):
     path = task_path(task_id)
     if not path.exists():
         return None
-    return json.loads(path.read_text())
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def write_task(task):
     path = task_path(task["id"])
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(task))
+    temporary = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("w", encoding="utf-8") as stream:
+            json.dump(task, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def task_lock(task_id):
+    with TASK_LOCKS_GUARD:
+        return TASK_LOCKS.setdefault(task_id, threading.RLock())
+
+
+def set_task_running(task_id, running):
+    with RUNNING_TASKS_GUARD:
+        if running:
+            RUNNING_TASKS.add(task_id)
+        else:
+            RUNNING_TASKS.discard(task_id)
+
+
+def task_timestamp(task, field):
+    try:
+        return datetime.fromisoformat(task[field]).timestamp()
+    except (KeyError, TypeError, ValueError):
+        return 0
+
+
+def remove_task_directory(task_id):
+    shutil.rmtree(TASK_ROOT / task_id, ignore_errors=True)
+
+
+def process_is_ffmpeg(pid, task_dir):
+    if not isinstance(pid, int) or pid <= 0:
+        return False
+    try:
+        command = Path(f"/proc/{pid}/cmdline").read_bytes().decode(errors="ignore")
+    except OSError:
+        return False
+    return "ffmpeg" in command and str(task_dir) in command
+
+
+def release_recovered_task(task):
+    try:
+        settle_task(task, "release")
+        task.pop("recoveryError", None)
+        return True
+    except Exception as error:
+        task["recoveryError"] = str(error)
+        return False
+
+
+def recover_tasks():
+    """Mark work interrupted by a service restart and remove stale uploads."""
+    now_timestamp = time.time()
+    for directory in TASK_ROOT.iterdir():
+        if not directory.is_dir():
+            continue
+        if directory.name.startswith("video-upload-"):
+            if now_timestamp - directory.stat().st_mtime >= FAILED_TASK_RETENTION_SECONDS:
+                shutil.rmtree(directory, ignore_errors=True)
+            continue
+        task_file = directory / "task.json"
+        if not task_file.exists():
+            continue
+        task = read_task(directory.name)
+        if not task:
+            if now_timestamp - task_file.stat().st_mtime >= FAILED_TASK_RETENTION_SECONDS:
+                remove_task_directory(directory.name)
+            continue
+        if task.get("status") == "completed":
+            output = directory / f"result.{task.get('outputFormat', '')}"
+            if not output.exists():
+                try:
+                    internal_call(
+                        f"{VIDEO_PROJECTS_URL}/{task['userId']}/{task['projectId']}/results/{task['id']}",
+                        method="DELETE",
+                    )
+                except Exception as error:
+                    task["recoveryError"] = str(error)
+                task.update({
+                    "status": "failed",
+                    "stage": "failed",
+                    "message": "O resultado local da tarefa não está disponível.",
+                    "error": task_error(
+                        "RESULT_MISSING",
+                        "O resultado local da tarefa não está disponível.",
+                        True,
+                    ),
+                    "finishedAt": now(),
+                    "recoveryCode": "RESULT_MISSING",
+                })
+                release_recovered_task(task)
+                write_task(task)
+            continue
+        if task.get("status") not in {"queued", "processing"}:
+            continue
+        pid = task.get("processPid")
+        if process_is_ffmpeg(pid, directory):
+            try:
+                os.kill(pid, 15)
+            except OSError:
+                pass
+        output = directory / f"result.{task.get('outputFormat', '')}"
+        output.unlink(missing_ok=True)
+        task.update({
+            "status": "failed",
+            "stage": "failed",
+            "message": "O processamento foi interrompido pelo reinício do serviço.",
+            "error": "O processamento foi interrompido pelo reinício do serviço.",
+            "finishedAt": now(),
+            "recoveryCode": "TASK_INTERRUPTED",
+        })
+        task["error"] = task_error("TASK_INTERRUPTED", task["error"], True)
+        release_recovered_task(task)
+        write_task(task)
+
+
+def cleanup_tasks():
+    """Delete terminal task directories after their retention period."""
+    current = time.time()
+    with RUNNING_TASKS_GUARD:
+        running = set(RUNNING_TASKS)
+    for directory in TASK_ROOT.iterdir():
+        if not directory.is_dir() or directory.name in running:
+            continue
+        task = read_task(directory.name)
+        if not task:
+            continue
+        if task.get("recoveryError") and task.get("status") == "failed":
+            release_recovered_task(task)
+            write_task(task)
+        if task.get("recoveryError"):
+            continue
+        status = task.get("status")
+        if status in {"completed", "cancelled"}:
+            retention = TASK_RETENTION_SECONDS
+        elif status == "failed":
+            retention = FAILED_TASK_RETENTION_SECONDS
+        else:
+            continue
+        timestamp = task_timestamp(task, "finishedAt") or directory.stat().st_mtime
+        if current - timestamp >= retention:
+            remove_task_directory(directory.name)
+
+
+def maintenance_loop():
+    while True:
+        try:
+            cleanup_tasks()
+        except (OSError, ValueError):
+            app.logger.exception("Video task cleanup failed")
+        time.sleep(max(10, CLEANUP_INTERVAL_SECONDS))
+
+
+def internal_call(url, data=None, method="POST"):
+    if not VIDEO_INTERNAL_SECRET:
+        raise RuntimeError("VIDEO_INTERNAL_SECRET is not configured")
+    body = json.dumps(data or {}).encode()
+    req = Request(
+        url,
+        data=body,
+        method=method,
+        headers={
+            "Authorization": f"Bearer {VIDEO_INTERNAL_SECRET}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urlopen(req, context=ssl._create_unverified_context(), timeout=15) as response:
+            return json.load(response)
+    except HTTPError as error:
+        try:
+            details = json.loads(error.read(65536))
+        except (ValueError, OSError):
+            details = {}
+        raise RuntimeError(details.get("error", "Internal service rejected the request")) from None
+    except (URLError, TimeoutError, OSError) as error:
+        raise RuntimeError("Internal service unavailable") from error
+
+
+def reserve_task(task):
+    profile = internal_call(
+        f"{VIDEO_USERS_URL}/internal/video-quota/{task['userId']}/profile", method="GET"
+    )["type"]
+    if profile not in {"free", "premium"}:
+        raise RuntimeError("Este perfil não pode processar vídeo.")
+    task["profile"] = profile
+    internal_call(
+        f"{VIDEO_USERS_URL}/internal/video-quota/{task['userId']}/{task['id']}/reserve",
+        {"profile": profile},
+    )
+
+
+def settle_task(task, action):
+    try:
+        internal_call(
+            f"{VIDEO_USERS_URL}/internal/video-quota/{task['userId']}/{task['id']}/{action}",
+            {"profile": task.get("profile")},
+        )
+    except RuntimeError as error:
+        raise VideoProcessingError(
+            "QUOTA_UNAVAILABLE",
+            "Não foi possível atualizar a quota desta operação.",
+            True,
+        ) from error
+
+
+def publish_task(task):
+    try:
+        internal_call(
+            f"{VIDEO_PROJECTS_URL}/{task['userId']}/{task['projectId']}/results/{task['id']}",
+            {
+                "format": task["outputFormat"],
+                "name": task["downloadName"],
+                "metadata": task.get("result", {}),
+            },
+        )
+    except RuntimeError as error:
+        raise VideoProcessingError(
+            "LIBRARY_UNAVAILABLE",
+            "O resultado foi processado, mas não foi possível guardá-lo na biblioteca.",
+            True,
+        ) from error
 
 
 def ffprobe(path):
@@ -218,11 +498,21 @@ def run_task(task):
     task_dir = TASK_ROOT / task["id"]
     input_path = task_dir / "input"
     output_path = task_dir / f"result.{task['outputFormat']}"
-    task["status"] = "processing"
-    task["startedAt"] = now()
-    write_task(task)
-
+    lock = task_lock(task["id"])
+    set_task_running(task["id"], True)
     try:
+        with lock:
+            if task.get("status") == "cancelled":
+                return
+            update_task(
+                task,
+                status="processing",
+                progress=1,
+                stage="encoding",
+                message="A converter o vídeo...",
+                startedAt=now(),
+                error=None,
+            )
         input_metadata = task.get("inputMetadata") or inspect_video(input_path)
         duration = input_metadata["duration"]
         width, height = task["width"], task["height"]
@@ -249,9 +539,18 @@ def run_task(task):
             "ffmpeg", "-y", "-i", str(input_path), "-vf", video_filter,
             "-progress", "pipe:1", "-nostats", *codec_args, str(output_path),
         ]
+        update_task(task, progress=2, stage="encoding", message="A iniciar a conversão...")
+        with lock:
+            if (read_task(task["id"]) or task).get("status") == "cancelled":
+                return
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        task["processPid"] = process.pid
-        write_task(task)
+        with lock:
+            current = read_task(task["id"]) or task
+            if current.get("status") == "cancelled":
+                process.terminate()
+                return
+            task["processPid"] = process.pid
+            write_task(task)
         for line in process.stdout:
             if line.startswith("out_time_ms="):
                 raw_elapsed = line.split("=", 1)[1].strip()
@@ -261,21 +560,70 @@ def run_task(task):
                     elapsed = int(raw_elapsed) / 1_000_000
                 except ValueError:
                     continue
-                task["progress"] = min(99, round((elapsed / duration) * 100)) if duration else 0
+                task["progress"] = min(98, max(2, round((elapsed / duration) * 100))) if duration else 2
+                task["stage"] = "encoding"
+                task["message"] = "A converter o vídeo..."
                 write_task(task)
         return_code = process.wait()
+        with lock:
+            current = read_task(task["id"]) or task
+            if current.get("status") == "cancelled":
+                if output_path.exists():
+                    output_path.unlink()
+                return
         if return_code != 0:
-            raise RuntimeError(process.stderr.read()[-1000:] or "FFmpeg failed")
-        task.update({
-            "status": "completed", "progress": 100, "finishedAt": now(),
-            "downloadName": f"resized-{task['id']}.{task['outputFormat']}",
-        })
-        write_task(task)
+            raise VideoProcessingError(
+                "FFMPEG_FAILED",
+                "O vídeo não pôde ser convertido para o formato selecionado.",
+            )
+        with lock:
+            task.update({
+                "status": "processing", "progress": 99, "stage": "saving",
+                "message": "A guardar o resultado na biblioteca.",
+                "downloadName": f"resized-{task['id']}.{task['outputFormat']}",
+                "result": {"width": width, "height": height, "duration": duration},
+            })
+            write_task(task)
+            publish_task(task)
+            settle_task(task, "commit")
+            update_task(
+                task,
+                status="completed",
+                progress=100,
+                stage="completed",
+                message="Processamento concluído.",
+                error=None,
+                finishedAt=now(),
+            )
     except Exception as error:
-        task.update({"status": "failed", "error": str(error), "finishedAt": now()})
-        write_task(task)
+        with lock:
+            current = read_task(task["id"]) or task
+            if current.get("status") == "cancelled":
+                return
+            task.update({
+                "status": "failed",
+                "progress": task.get("progress", 0),
+                "stage": "failed",
+                "message": "O processamento falhou.",
+                "error": error_from_exception(error),
+                "finishedAt": now(),
+            })
+            try:
+                internal_call(
+                    f"{VIDEO_PROJECTS_URL}/{task['userId']}/{task['projectId']}/results/{task['id']}",
+                    method="DELETE",
+                )
+            except Exception as cleanup_error:
+                task["recoveryError"] = str(cleanup_error)
+            try:
+                settle_task(task, "release")
+            except Exception as release_error:
+                task["recoveryError"] = str(release_error)
+            write_task(task)
         if output_path.exists():
             output_path.unlink()
+    finally:
+        set_task_running(task["id"], False)
 
 
 @app.post("/video/resize")
@@ -288,15 +636,18 @@ def create_resize_task():
         height = int(request.form["height"])
         output_format = request.form["outputFormat"]
         resize_mode = request.form["resizeMode"]
-        premium = request.form.get("premium", "false") == "true"
+        profile = request.form["profile"]
         user_id = request.form["userId"]
+        project_id = request.form["projectId"]
     except (KeyError, ValueError):
         return jsonify(error="Invalid resize parameters"), 400
     max_width, max_height, max_duration, max_size = (
         (MAX_PREMIUM_WIDTH, MAX_PREMIUM_HEIGHT, MAX_PREMIUM_DURATION, MAX_PREMIUM_SIZE)
-        if premium
+        if profile == "premium"
         else (MAX_FREE_WIDTH, MAX_FREE_HEIGHT, MAX_FREE_DURATION, MAX_FREE_SIZE)
     )
+    if profile not in {"free", "premium"}:
+        return jsonify(error="Invalid user profile"), 403
     if output_format not in ALLOWED_OUTPUTS or resize_mode not in {"contain", "cover", "stretch"}:
         return jsonify(error="Unsupported output format or resize mode"), 400
     larger_side, smaller_side = max(width, height), min(width, height)
@@ -340,8 +691,20 @@ def create_resize_task():
         "id": task_id, "status": "queued", "progress": 0, "width": width,
         "height": height, "resizeMode": resize_mode, "outputFormat": output_format,
         "createdAt": now(), "downloadName": None,
-        "userId": user_id, "inputMetadata": video_metadata,
+        "stage": "queued", "message": "Tarefa criada.",
+        "error": None,
+        "userId": user_id, "projectId": project_id, "profile": profile,
+        "inputMetadata": video_metadata,
     }
+    try:
+        reserve_task(task)
+    except Exception as error:
+        shutil.rmtree(task_dir, ignore_errors=True)
+        return jsonify(error=task_error(
+            "QUOTA_RESERVATION_FAILED",
+            "Não foi possível reservar a quota para esta operação.",
+            True,
+        )), 429
     write_task(task)
     threading.Thread(target=run_task, args=(task,), daemon=True).start()
     return jsonify(task), 202
@@ -357,6 +720,45 @@ def get_task(task_id):
     return jsonify(task)
 
 
+@app.delete("/video/tasks/<task_id>")
+def cancel_task(task_id):
+    task = read_task(task_id)
+    if not task or request.args.get("userId") != task.get("userId"):
+        return jsonify(error="Task not found"), 404
+    lock = task_lock(task_id)
+    with lock:
+        task = read_task(task_id)
+        if task.get("status") in {"completed", "failed"}:
+            return jsonify(task)
+        pid = task.get("processPid")
+        if pid:
+            try:
+                os.kill(pid, 15)
+            except ProcessLookupError:
+                pass
+        task.update({
+            "status": "cancelled",
+            "stage": "cancelled",
+            "message": "O processamento foi cancelado.",
+            "finishedAt": now(),
+            "error": None,
+        })
+        write_task(task)
+        try:
+            internal_call(
+                f"{VIDEO_PROJECTS_URL}/{task['userId']}/{task['projectId']}/results/{task_id}",
+                method="DELETE",
+            )
+            settle_task(task, "release")
+        except Exception as error:
+            return jsonify(error=str(error)), 503
+        write_task(task)
+    output = TASK_ROOT / task_id / f"result.{task['outputFormat']}"
+    if output.exists():
+        output.unlink()
+    return jsonify(task)
+
+
 @app.get("/video/tasks/<task_id>/download")
 def download_task(task_id):
     task = read_task(task_id)
@@ -367,9 +769,11 @@ def download_task(task_id):
         return jsonify(error="Result file is missing"), 404
     return send_file(output, as_attachment=True, download_name=task["downloadName"])
 
-# UC2 is registered separately; the existing resize routes stay unchanged.
+# Register the modular UC2 and UC3 operations alongside resize.
 from use_cases.trim_integration import register_trim
-register_trim(app, TASK_ROOT)
-
 from use_cases.audio_integration import register_audio
+
+register_trim(app, TASK_ROOT)
 register_audio(app, TASK_ROOT)
+recover_tasks()
+threading.Thread(target=maintenance_loop, name="video-task-cleanup", daemon=True).start()
