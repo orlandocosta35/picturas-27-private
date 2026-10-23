@@ -11,10 +11,10 @@ async function deleteFile(userId, projectId, stage, fileName) {
     };
 
     await s3.deleteObject(params).promise();
-    console.log(`Arquivo '${key}' deletado do bucket '${bucketName}'.`);
-    return { message: "Arquivo deletado com sucesso!", key };
+    console.log(`File '${key}' deleted from bucket '${bucketName}'.`);
+    return { message: "File deleted successfully!", key };
   } catch (error) {
-    console.error("Erro ao deletar o arquivo:", error.message);
+    console.error("Could not delete file:", error.message);
     throw error;
   }
 }

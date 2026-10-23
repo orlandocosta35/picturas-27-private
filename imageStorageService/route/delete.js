@@ -10,7 +10,7 @@ router.delete("/:userId/:projectId/:stage/:fileName", async (req, res) => {
 
   if (!allowedStages.includes(stage)) {
     return res.status(400).json({
-      error: "O estágio deve ser src, preview, preview_cache ou out.",
+      error: "Stage must be src, preview, preview_cache or out.",
     });
   }
 

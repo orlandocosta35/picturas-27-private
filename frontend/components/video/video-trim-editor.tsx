@@ -1,5 +1,7 @@
 "use client";
 
+import { VideoEditorHeader } from "./video-editor-header";
+
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,7 +53,7 @@ function message(error: unknown) {
   const e = error as { response?: { data?: { error?: string } } };
   return (
     e.response?.data?.error ||
-    "Não foi possível contactar o serviço. Tenta novamente."
+    "Could not contact the service. Please try again."
   );
 }
 
@@ -232,7 +234,7 @@ export function VideoTrimEditor({
           setTask(current);
           refreshSession.current({ userId: userId!, token: token! });
           if (current.status === "failed")
-            setError(current.error || "O corte falhou.");
+            setError(current.error || "Trimming failed.");
         }
       } catch (e) {
         if (!disposed) {
@@ -269,7 +271,7 @@ export function VideoTrimEditor({
       } else if (result.status === "confirmation_required") setPlan(result);
       else {
         setPlan(null);
-        setNotice("Não há nada a recortar. Nenhuma operação foi consumida.");
+        setNotice("There is nothing to trim. No operation was used.");
       }
     } catch (e) {
       setError(message(e));
@@ -290,7 +292,7 @@ export function VideoTrimEditor({
     try {
       setTask(await cancelVideoTrimTask(userId, projectId, token, task.id));
       refreshSession.current({ userId, token });
-      setNotice("Tarefa cancelada.");
+      setNotice("Task canceled.");
     } catch (e) {
       setError(message(e));
     } finally {
@@ -327,28 +329,27 @@ export function VideoTrimEditor({
     else setEnd(value);
   }
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold">Recortar vídeo</h1>
+        <VideoEditorHeader
+          title="Trim video"
+          description="The original is preserved. Trimmed videos are saved in the project results."
+        />
         {onAudio && (
           <Button variant="outline" disabled={busy} onClick={onAudio}>
-            Gerir áudio
+            Manage audio
           </Button>
         )}
         {onResize && (
           <Button variant="outline" disabled={busy} onClick={onResize}>
-            Redimensionar
+            Resize
           </Button>
         )}
       </div>
       {!initialFile || !userId || !projectId || !token ? (
-        <p>Abre um projeto de vídeo para recortar o original guardado.</p>
+        <p>Open a video project to trim the saved original.</p>
       ) : (
         <>
-          <p className="text-sm text-muted-foreground">
-            O original é preservado. Os cortes ficam guardados nos resultados do
-            projeto.
-          </p>
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
@@ -383,20 +384,20 @@ export function VideoTrimEditor({
                     void video.current.play().catch(() => setPreviewing(false));
                   }}
                 >
-                  Pré-visualizar intervalo
+                  Preview range
                 </Button>
               </CardContent>
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Intervalo de corte</CardTitle>
+                <CardTitle>Trim range</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <fieldset disabled={busy || running} className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label htmlFor="trim-start-time">
-                        Início (mm:ss.mmm)
+                        Start (mm:ss.mmm)
                       </Label>
                       <Input
                         id="trim-start-time"
@@ -406,7 +407,7 @@ export function VideoTrimEditor({
                       />
                     </div>
                     <div>
-                      <Label htmlFor="trim-end-time">Fim (mm:ss.mmm)</Label>
+                      <Label htmlFor="trim-end-time">End (mm:ss.mmm)</Label>
                       <Input
                         id="trim-end-time"
                         value={end}
@@ -417,7 +418,7 @@ export function VideoTrimEditor({
                   </div>
                   <div>
                     <Label htmlFor="trim-start-slider">
-                      Início na linha temporal
+                      Timeline start
                     </Label>
                     <input
                       id="trim-start-slider"
@@ -438,7 +439,7 @@ export function VideoTrimEditor({
                   </div>
                   <div>
                     <Label htmlFor="trim-end-slider">
-                      Fim na linha temporal
+                      Timeline end
                     </Label>
                     <input
                       id="trim-end-slider"
@@ -460,7 +461,7 @@ export function VideoTrimEditor({
                   {points && limit > 0 && (
                     <div>
                       <p className="text-sm text-muted-foreground">
-                        Pontos de corte disponíveis ({points.length})
+                        Available keyframes ({points.length})
                       </p>
                       <div
                         aria-hidden
@@ -487,7 +488,7 @@ export function VideoTrimEditor({
                     </div>
                   )}
                   <div>
-                    <Label htmlFor="trim-mode">Modo</Label>
+                    <Label htmlFor="trim-mode">Mode</Label>
                     <select
                       id="trim-mode"
                       value={mode}
@@ -497,30 +498,30 @@ export function VideoTrimEditor({
                         setPlan(null);
                       }}
                     >
-                      <option value="fast">Rápido</option>
-                      <option value="precise">Preciso</option>
+                      <option value="fast">Fast</option>
+                      <option value="precise">Precise</option>
                     </select>
                     <p className="mt-2 text-sm text-muted-foreground">
                       {mode === "precise"
-                        ? "Recodifica o intervalo para cortar com precisão ao fotograma."
+                        ? "Re-encodes the selected range for frame-accurate trimming."
                         : points
-                          ? "Só é possível cortar nos pontos marcados (keyframes). O início e o fim ajustam-se ao ponto mais próximo."
+                          ? "Trimming is only possible at the marked keyframes. The start and end snap to the nearest point."
                           : keyframesError
-                            ? `Não foi possível obter os pontos de corte (${keyframesError}). Pediremos confirmação se o intervalo mudar.`
-                            : "A obter os pontos de corte do vídeo…"}
+                            ? `Could not load keyframes (${keyframesError}). You will be asked to confirm if the range changes.`
+                            : "Loading video keyframes…"}
                     </p>
                   </div>
                 </fieldset>
                 <p>
-                  Duração selecionada:{" "}
+                  Selected duration:{" "}
                   {valid
                     ? timeText(last - first)
-                    : "intervalo inválido (mínimo 1 segundo)"}
+                    : "invalid range (minimum 1 second)"}
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {estimate === null
-                    ? "Tempo de processamento: ainda sem histórico suficiente neste modo."
-                    : `Tempo estimado: cerca de ${estimate} s, sem contar o tempo em fila. Pode variar com o vídeo e a carga do sistema.`}
+                    ? "Processing time: not enough history for this mode yet."
+                    : `Estimated time: about ${estimate} s, excluding queue time. This may vary with the video and system load.`}
                 </p>
                 {plan && (
                   <div role="alert" className="space-y-2 rounded border p-3">
@@ -529,7 +530,7 @@ export function VideoTrimEditor({
                       {timeText(plan.requestedEndSeconds)}
                     </p>
                     <p>
-                      Intervalo disponível:{" "}
+                      Available range:{" "}
                       {timeText(plan.effectiveStartSeconds)} —{" "}
                       {timeText(plan.effectiveEndSeconds)}
                     </p>
@@ -537,10 +538,10 @@ export function VideoTrimEditor({
                       disabled={busy || running}
                       onClick={() => void submit(true)}
                     >
-                      Confirmar intervalo disponível
+                      Confirm available range
                     </Button>
                     <Button variant="ghost" onClick={() => setPlan(null)}>
-                      Voltar a editar
+                      Back to editing
                     </Button>
                   </div>
                 )}
@@ -549,20 +550,20 @@ export function VideoTrimEditor({
                     disabled={!valid || busy || running || loading}
                     onClick={() => void submit()}
                   >
-                    {busy ? "A preparar…" : "Recortar vídeo"}
+                    {busy ? "Preparing…" : "Trim video"}
                   </Button>
                 )}
                 {task && (
                   <div className="space-y-2" aria-live="polite">
                     <p>
-                      Última tarefa:{" "}
+                      Latest task:{" "}
                       {
                         {
-                          queued: "Em fila",
-                          processing: "A processar",
-                          completed: "Concluído",
-                          failed: "Falhou",
-                          cancelled: "Cancelado",
+                          queued: "Queued",
+                          processing: "Processing",
+                          completed: "Completed",
+                          failed: "Failed",
+                          cancelled: "Canceled",
                         }[task.status]
                       }{" "}
                       · {task.progress}%
@@ -574,13 +575,12 @@ export function VideoTrimEditor({
                         disabled={busy}
                         onClick={() => void cancel()}
                       >
-                        Cancelar tarefa
+                        Cancel task
                       </Button>
                     )}
                     {running && (
                       <p className="text-sm text-muted-foreground">
-                        Podes sair desta página. A tarefa continua e será
-                        recuperada ao regressares.
+                        You can leave this page. The task will continue and will be restored when you return.
                       </p>
                     )}
                   </div>
@@ -590,12 +590,12 @@ export function VideoTrimEditor({
           </div>
           <Card>
             <CardHeader>
-              <CardTitle>Resultados guardados</CardTitle>
+              <CardTitle>Saved results</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {!results.length && (
                 <p className="text-sm text-muted-foreground">
-                  Ainda não existem resultados guardados.
+                  No saved results yet.
                 </p>
               )}
               {results.map((item) => (
@@ -605,7 +605,7 @@ export function VideoTrimEditor({
                 >
                   <span className="break-all">{item.name}</span>
                   <Button variant="outline" onClick={() => void download(item)}>
-                    Descarregar
+                    Download
                   </Button>
                 </div>
               ))}

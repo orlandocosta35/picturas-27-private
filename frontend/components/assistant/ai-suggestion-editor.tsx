@@ -1,6 +1,6 @@
 "use client";
 
-import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { Button } from "@/components/ui/button";
 import type { ProjectToolResponse } from "@/lib/projects";
 import type { Suggestion } from "./ai-assistant-dialog"; // ajusta o path se necessário
@@ -21,18 +21,19 @@ export function AiSuggestionEditor({ suggestion, onChange, onApply }: Props) {
         {Object.entries((tool.params ?? {}) as Record<string, unknown>).map(([k, v]) => (
             <div key={k} className="mt-1">
               <label className="text-xs">{k}</label>
-              <Input
-                type="number"
+              <NumberInput<number | "">
+                label={k}
+                allowEmpty
                 step="any"
                 inputMode="decimal"
-                value={String(v ?? "")}
-                onChange={(e) => {
+                value={v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? "" : Number(v)}
+                onValueChange={(value) => {
                   const copy = structuredClone(suggestion) as Suggestion;
 
                   const params = (copy.tools[i].params ?? {}) as Record<string, unknown>;
                   const original = params[k];
 
-                  let next: any = e.target.value;
+                  let next: any = String(value);
 
                   if (typeof original === "number") {
                     const n = Number(next.replace(",", ".")); // extra safety PT locale
@@ -52,7 +53,7 @@ export function AiSuggestionEditor({ suggestion, onChange, onApply }: Props) {
       ))}
 
     <Button type="button" onClick={() => onApply(suggestion)}>
-    Aplicar sugestão editada
+    Apply edited suggestion
     </Button>
 
     </div>

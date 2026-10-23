@@ -149,17 +149,17 @@ async function reserve(userId, taskId, profile) {
   const existing = current?.videoReservations?.find((r) => r.id === taskId);
   if (existing?.status === "reserved" || existing?.status === "committed")
     return;
-  if (existing) throw error("TASK_RELEASED", "A tarefa já foi libertada.", 409);
+  if (existing) throw error("TASK_RELEASED", "The task reservation has already been released.", 409);
   if (!current || !["free", "premium"].includes(current.type))
     throw error(
       "PROFILE_NOT_ALLOWED",
-      "Este perfil não pode processar vídeo.",
+      "This profile cannot process video.",
       403,
     );
   if (current.type !== profile)
     throw error(
       "PROFILE_CHANGED",
-      "O perfil foi alterado. Tente novamente.",
+      "The profile has changed. Please try again.",
       409,
     );
   if (
@@ -168,20 +168,20 @@ async function reserve(userId, taskId, profile) {
   )
     throw error(
       "ACTIVE_TASK_LIMIT",
-      "Já existe uma tarefa de vídeo ativa.",
+      "A video task is already active.",
       409,
     );
-  throw error("QUOTA_EXCEEDED", "Atingiste o limite diário de operações.", 429);
+  throw error("QUOTA_EXCEEDED", "You have reached your daily operation limit.", 429);
 }
 async function settle(userId, taskId, action) {
   // CAS on reservation state; retry if a competing commit/release won.
   for (let attempt = 0; attempt < 4; attempt++) {
     const user = await User.findById(userId);
-    if (!user) throw error("USER_NOT_FOUND", "Utilizador não encontrado.", 404);
+    if (!user) throw error("USER_NOT_FOUND", "User not found.", 404);
     const r = user.videoReservations?.find((r) => r.id === taskId);
     if (!r) {
       if (action !== "release")
-        throw error("RESERVATION_NOT_FOUND", "Reserva não encontrada.", 409);
+        throw error("RESERVATION_NOT_FOUND", "Reservation not found.", 409);
       const result = await User.updateOne(
         { _id: userId, "videoReservations.id": { $ne: taskId } },
         {
@@ -201,7 +201,7 @@ async function settle(userId, taskId, action) {
     const target = action === "commit" ? "committed" : "released";
     if (r.status === target) return;
     if (action === "commit" && r.status !== "reserved")
-      throw error("TASK_RELEASED", "A tarefa já foi libertada.", 409);
+      throw error("TASK_RELEASED", "The task reservation has already been released.", 409);
     const delta = r.charged
       ? action === "commit"
         ? 1
@@ -239,7 +239,7 @@ async function settle(userId, taskId, action) {
   }
   throw error(
     "QUOTA_BUSY",
-    "Não foi possível atualizar a reserva. Tente novamente.",
+    "Could not update the reservation. Please try again.",
     503,
   );
 }

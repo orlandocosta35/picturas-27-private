@@ -118,7 +118,7 @@ export function AppliedToolsList() {
           }
         },
         onError: (error) => {
-          console.error("Erro ao reordenar:", error);
+          console.error("Could not reorder tools:", error);
           const { title, description } = getErrorMessage("project-update", error);
           toast({
             title,
@@ -161,8 +161,8 @@ export function AppliedToolsList() {
   function handleUndo() {
     if (tools.length === 0) {
       toast({
-        title: "Nada para reverter",
-        description: "Ainda não aplicaste nenhuma edição nesta sessão.",
+        title: "Nothing to undo",
+        description: "You have not applied any edits in this session yet.",
       });
       return;
     }
@@ -203,8 +203,8 @@ export function AppliedToolsList() {
   function handleReset() {
     if (tools.length === 0) {
       toast({
-        title: "Nada para limpar",
-        description: "Este projeto já está na versão original.",
+        title: "Nothing to reset",
+        description: "This project is already at its original version.",
       });
       return;
     }
@@ -222,8 +222,8 @@ export function AppliedToolsList() {
           clearResultsCache();
 
           toast({
-            title: "Edições removidas",
-            description: "A imagem voltou à versão original.",
+            title: "Edits removed",
+            description: "The image has been restored to the original version.",
           });
         },
         onError: (error) => {
@@ -246,7 +246,7 @@ export function AppliedToolsList() {
             className="h-6 w-6"
             onClick={handleUndo}
             disabled={tools.length === 0 || deleteTool.isPending}
-            title="Reverter última edição"
+            title="Undo last edit"
           >
             <Undo2 className="h-3 w-3" />
           </Button>
@@ -257,7 +257,7 @@ export function AppliedToolsList() {
             className="h-6 w-6"
             onClick={handleReset}
             disabled={tools.length === 0 || clearTools.isPending}
-            title="Reset para versão original"
+            title="Restore original version"
           >
             <RotateCcw className="h-3 w-3" />
           </Button>
@@ -266,7 +266,7 @@ export function AppliedToolsList() {
 
       {tools.length === 0 && (
         <p className="text-[11px] text-gray-400">
-          Nenhuma ferramenta aplicada
+          No tools applied
         </p>
       )}
 

@@ -17,7 +17,7 @@ export default function OperationsCounter() {
   if (remaining === undefined || remaining === null) return null;
   return (
     <div className="flex flex-col gap-1 text-xs text-muted-foreground">
-      <span>Operações diárias restantes</span>
+      <span>Daily operations remaining</span>
       <span className="text-sm font-semibold text-foreground">
         {remaining}
       </span>

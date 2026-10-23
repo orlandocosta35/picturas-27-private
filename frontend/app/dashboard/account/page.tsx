@@ -286,17 +286,17 @@ export default function Account() {
           </CardContent>
         </Card>
 
-        {/* Aparência */}
+        {/* Appearance */}
         <Card>
           <CardHeader>
-            <CardTitle>Aparência</CardTitle>
-            <CardDescription>Escolhe entre modo claro e modo escuro.</CardDescription>
+            <CardTitle>Appearance</CardTitle>
+            <CardDescription>Choose between light and dark mode.</CardDescription>
           </CardHeader>
           <CardContent className="flex items-center justify-between gap-4">
             <div className="flex flex-col">
-              <Label className="mb-1">Modo escuro</Label>
+              <Label className="mb-1">Dark mode</Label>
               <p className="text-sm text-muted-foreground">
-                {theme === "dark" ? "Ativo" : "Inativo"}
+                {theme === "dark" ? "On" : "Off"}
               </p>
             </div>
 

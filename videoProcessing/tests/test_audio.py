@@ -115,7 +115,7 @@ class AudioTests(unittest.TestCase):
 
     def test_several_audio_tracks_use_the_first_and_warn(self):
         info = self.submit(source=self.two_tracks, inspect=True).get_json()
-        self.assertIn('2 faixas de áudio', info['video']['audioNotice'])
+        self.assertIn('2 audio tracks', info['video']['audioNotice'])
         output, _ = self.complete(self.submit(source=self.two_tracks, volume=100))
         streams = subprocess.check_output(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type',
             '-of', 'csv=p=0', str(output)], text=True).split()

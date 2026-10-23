@@ -84,9 +84,9 @@ export function ToolbarButton({
 
     if (status === 409) {
       toast({
-        title: "Conflito de edição",
+        title: "Edit conflict",
         description:
-          "O projeto foi alterado por outro utilizador. Atualizámos para a versão mais recente.",
+          "Another user changed the project. It has been refreshed to the latest version.",
         variant: "destructive",
       });
 
@@ -219,7 +219,7 @@ export function ToolbarButton({
      if (!canEdit) {
       toast({
         title: "Read-only",
-        description: "Este projeto foi partilhado com permissão de leitura.",
+        description: "This project was shared with read-only access.",
         variant: "destructive",
       });
       return;
@@ -279,7 +279,7 @@ export function ToolbarButton({
     locked ||
     (preview.waiting !== tool.procedure && preview.waiting !== "");
 
-  const lockReason = "Read-only (não podes editar)";
+  const lockReason = "Read-only (editing is disabled)";
 
   const TButton = () => (
     <Tooltip>

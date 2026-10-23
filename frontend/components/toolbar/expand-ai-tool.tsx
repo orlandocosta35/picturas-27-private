@@ -1,3 +1,4 @@
+import { NumberInput } from "@/components/ui/number-input";
 import { useState } from "react";
 import { Expand } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -50,21 +51,21 @@ export default function ExpandAITool({ disabled }: { disabled?: boolean }) {
     >
       <div className="flex flex-col gap-3 p-2">
         <div className="flex flex-col gap-1">
-          <label className="text-sm">Expansão (%)</label>
-          <Input
-            type="number"
+          <label className="text-sm">Expansion (%)</label>
+          <NumberInput
+            label="Expansion (%)"
             min={1}
             max={200}
             value={percent}
-            onChange={(e) => setPercent(Number(e.target.value))}
+            onValueChange={(value) => setPercent(value)}
           />
           <span className="text-xs text-muted-foreground">
-            25% costuma ser suficiente para “dar margem” à imagem.
+            25% is usually enough to add space around the image.
           </span>
         </div>
 
         <div className="flex flex-col gap-1">
-          <label className="text-sm">Modo</label>
+          <label className="text-sm">Mode</label>
           <select
             className="h-9 rounded-md border bg-background px-3 text-sm"
             value={mode}
@@ -79,7 +80,7 @@ export default function ExpandAITool({ disabled }: { disabled?: boolean }) {
 
         {mode === "solid" && (
           <div className="flex flex-col gap-1">
-            <label className="text-sm">Cor</label>
+            <label className="text-sm">Color</label>
             <Input
               type="text"
               value={color}
@@ -87,7 +88,7 @@ export default function ExpandAITool({ disabled }: { disabled?: boolean }) {
               placeholder="#000000"
             />
             <span className="text-xs text-muted-foreground">
-              Formato: #RRGGBB
+              Format: #RRGGBB
             </span>
           </div>
         )}
@@ -103,8 +104,7 @@ export default function ExpandAITool({ disabled }: { disabled?: boolean }) {
                 placeholder='Ex: "extend the sky naturally, same lighting and style"'
               />
               <span className="text-xs text-muted-foreground">
-                Dica: descreve como queres continuar o conteúdo (céu, relva,
-                fundo, etc.), mantendo estilo/iluminação.
+                Tip: describe how you want to extend the content (sky, grass, background, etc.) while keeping the same style and lighting.
               </span>
             </div>
 
@@ -121,11 +121,12 @@ export default function ExpandAITool({ disabled }: { disabled?: boolean }) {
             <div className="grid grid-cols-3 gap-2">
               <div className="flex flex-col gap-1">
                 <label className="text-sm">Seed</label>
-                <Input
-                  type="number"
+                <NumberInput<number | "">
+                  allowEmpty
+                  label="Seed"
                   value={seed}
-                  onChange={(e) =>
-                    setSeed(e.target.value === "" ? "" : Number(e.target.value))
+                  onValueChange={(value) =>
+                    setSeed(value)
                   }
                   placeholder="(auto)"
                 />
@@ -133,14 +134,15 @@ export default function ExpandAITool({ disabled }: { disabled?: boolean }) {
 
               <div className="flex flex-col gap-1">
                 <label className="text-sm">Steps</label>
-                <Input
-                  type="number"
+                <NumberInput<number | "">
+                  allowEmpty
+                  label="Steps"
                   min={1}
                   max={150}
                   value={steps}
-                  onChange={(e) =>
+                  onValueChange={(value) =>
                     setSteps(
-                      e.target.value === "" ? "" : Number(e.target.value),
+                      value,
                     )
                   }
                 />
@@ -148,14 +150,15 @@ export default function ExpandAITool({ disabled }: { disabled?: boolean }) {
 
               <div className="flex flex-col gap-1">
                 <label className="text-sm">Guidance</label>
-                <Input
-                  type="number"
+                <NumberInput<number | "">
+                  allowEmpty
+                  label="Guidance"
                   min={0}
                   max={20}
                   value={guidance}
-                  onChange={(e) =>
+                  onValueChange={(value) =>
                     setGuidance(
-                      e.target.value === "" ? "" : Number(e.target.value),
+                      value,
                     )
                   }
                 />

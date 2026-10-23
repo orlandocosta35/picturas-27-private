@@ -135,7 +135,7 @@ async function main() {
     "Trim result is listed in project library",
   );
   check(
-    saved.data[0].name.startsWith("sample_corte_"),
+    saved.data[0].name.startsWith("sample_trim_"),
     "Result name preserves original filename",
   );
   const download = await request(
@@ -323,12 +323,21 @@ async function main() {
     await pause(100);
   }
   check(resize.data.status === "completed", "UC1 resize still completes");
+  // Use a separate Premium account so repeated UI checks do not exhaust Free quota.
+  const browserOwner = new mongoose.Types.ObjectId();
+  await User.collection.insertOne({
+    _id: browserOwner, type: "premium", operations: [], videoReservations: [],
+  });
+  const browserProject = await Project.create({
+    user_id: browserOwner, name: "Trim UI", type: "video",
+    video: { originalName: "sample.mp4", mimeType: "video/mp4", path: "/validation/fixtures/source.mp4" },
+  });
   fs.writeFileSync(
     "/validation/ui-context.json",
     JSON.stringify({
-      userId: String(owner),
-      projectId: String(project._id),
-      token: token(owner),
+      userId: String(browserOwner),
+      projectId: String(browserProject._id),
+      token: token(browserOwner),
     }),
   );
   console.log(`ALL ${checks} integration checks passed`);

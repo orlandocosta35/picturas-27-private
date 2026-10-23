@@ -38,7 +38,7 @@ export function VideoProjectView({
         url = URL.createObjectURL(file);
         setVideoUrl(url);
       })
-      .catch(() => setError("Não foi possível carregar o vídeo deste projeto."));
+      .catch(() => setError("Could not load the video for this project."));
     return () => {
       if (url) URL.revokeObjectURL(url);
     };
@@ -48,7 +48,7 @@ export function VideoProjectView({
     return (
       <div className="h-full overflow-y-auto p-8">
         <Button variant="outline" className="mb-6" onClick={() => setEditing(false)}>
-          Voltar ao projeto
+          Back to project
         </Button>
         <VideoEditor
           initialFile={videoFile}
@@ -66,23 +66,23 @@ export function VideoProjectView({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Film className="size-5" />
-            Tratamento de vídeo
+            Video editing
           </CardTitle>
           <CardDescription>
-            O vídeo original é preservado. Escolhe uma operação para criar uma cópia processada.
+            The original video is preserved. Choose an operation to create a processed copy.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {videoUrl ? (
             <video className="max-h-[55vh] w-full rounded-lg bg-black" controls src={videoUrl}>
-              O browser não suporta reprodução de vídeo.
+              Your browser does not support video playback.
             </video>
           ) : error ? (
             <p className="text-destructive">{error}</p>
           ) : (
             <div className="flex items-center gap-2 text-muted-foreground">
               <LoaderCircle className="animate-spin" />
-              A carregar vídeo...
+              Loading video...
             </div>
           )}
           <Button
@@ -91,7 +91,7 @@ export function VideoProjectView({
             className="inline-flex gap-2"
           >
             <SlidersHorizontal className="size-4" />
-            Processar vídeo
+            Process video
           </Button>
         </CardContent>
       </Card>

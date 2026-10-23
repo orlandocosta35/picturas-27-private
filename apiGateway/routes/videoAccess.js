@@ -38,7 +38,7 @@ async function context(req, audience = "video-trim") {
   const profile = result.data.type;
   if (!["free", "premium"].includes(profile))
     throw Object.assign(
-      new Error("O perfil Anónimo não pode processar vídeo."),
+      new Error("Anonymous users cannot process video."),
       { status: 403 },
     );
   const token = jwt.sign(
@@ -68,7 +68,7 @@ async function failure(res, error) {
       : {
           error: error.status
             ? error.message
-            : "Serviço de vídeo indisponível.",
+            : "Video service unavailable.",
         },
   );
 }

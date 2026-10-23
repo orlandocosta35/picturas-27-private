@@ -15,7 +15,7 @@ router.post(
 
     if (!allowedStages.includes(stage)) {
       return res.status(400).json({
-        error: "O estágio deve ser src, preview, preview_cache ou out.",
+        error: "Stage must be src, preview, preview_cache or out.",
       });
     }
 
@@ -24,7 +24,7 @@ router.post(
       const result = await uploadImage(userId, projectId, req.file, stage);
       res
         .status(201)
-        .json({ message: "Imagem enviada com sucesso!", data: result });
+        .json({ message: "Image uploaded successfully!", data: result });
     } catch (error) {
       res.status(500).json({ error: error.message });
     }

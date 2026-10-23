@@ -198,7 +198,7 @@ router.get("/:user/:project/share", auth.checkToken, (req, res) => {
       headers: { Authorization: req.headers["authorization"] },
     })
     .then((resp) => res.status(200).jsonp(resp.data))
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
 
 });
 
@@ -225,7 +225,7 @@ router.post("/:user/:project/share", auth.checkToken, (req, res) => {
           }
           return res.status(201).jsonp(resp.data);
         })
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
 
 });
 
@@ -278,7 +278,7 @@ router.delete("/:user/:project/share/:shareId", auth.checkToken, (req, res) => {
       }
       return res.sendStatus(204);
     })
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"));
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."));
 });
 
 /**
@@ -298,7 +298,7 @@ router.get("/:user", auth.checkToken, function (req, res, next) {
       },
     })
     .then((resp) => res.status(200).jsonp(resp.data))
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"));
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."));
 });
 
 /**
@@ -339,7 +339,7 @@ router.get("/:user/:project", auth.checkToken, function (req, res, next) {
       },
     })
     .then((resp) => res.status(200).jsonp(resp.data))
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"));
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."));
 });
 
 
@@ -365,7 +365,7 @@ router.get(
         },
       })
       .then((resp) => res.status(200).send(resp.data))
-      .catch((err) => forwardAxiosError(res, err, "mensagem fallback"));
+      .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."));
   }
 );
 
@@ -388,7 +388,7 @@ router.get("/:user/:project/imgs", auth.checkToken, function (req, res, next) {
       },
     })
     .then((resp) => res.status(200).send(resp.data))
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"));
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."));
 });
 
 
@@ -415,11 +415,11 @@ router.get(
         },
       })
       .then((resp) => res.status(200).send(resp.data))
-      .catch((err) => forwardAxiosError(res, err, "mensagem fallback"));
+      .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."));
   }
 );
 
-  // Cancelar processamento de um projeto
+  // Cancel processing de um projeto
 router.delete("/:user/:project/process", auth.checkToken, (req, res) => {
   const ownerId = req.query.owner || req.params.user;
   const callerId = req.authUserId || req.params.user;
@@ -442,7 +442,7 @@ router.delete("/:user/:project/process", auth.checkToken, (req, res) => {
       }
       return res.sendStatus(204);
     })
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
 
 });
 
@@ -469,7 +469,7 @@ router.get(
         },
       })
       .then((resp) => res.status(200).send(resp.data))
-      .catch((err) => forwardAxiosError(res, err, "mensagem fallback"));
+      .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."));
   }
 );
 
@@ -485,7 +485,7 @@ router.post("/:user", auth.checkToken, function (req, res, next) {
       httpsAgent: httpsAgent,
     })
     .then((resp) => res.status(201).jsonp(resp.data))
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
 });
 
 router.post(
@@ -546,7 +546,7 @@ router.post(
       }
       )
       .then((resp) => res.status(201).jsonp(resp.data))
-      .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+      .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
   }
 );
 
@@ -592,7 +592,7 @@ router.post(
         }
         return res.sendStatus(204);
       })
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
 
   }
 );
@@ -626,7 +626,7 @@ router.post("/:user/:project/tool", auth.checkToken, function (req, res, next) {
       }
       return res.status(201).jsonp(resp.data);
     })
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
 });
 
 /**
@@ -661,7 +661,7 @@ router.post(
         }
         return res.status(201).jsonp(resp.data);
       })
-      .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+      .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
   }
 );
 
@@ -703,7 +703,7 @@ router.post(
         }
         return res.status(201).jsonp(resp.data);
       })
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
 
   }
 );
@@ -733,7 +733,7 @@ router.put("/:user/:project", auth.checkToken, function (req, res, next) {
       }
       return res.sendStatus(204);
     })
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
 
 });
 
@@ -770,7 +770,7 @@ router.put(
         }
         return res.sendStatus(204);
       })
-      .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+      .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
   }
 );
 
@@ -804,7 +804,7 @@ router.delete("/:user/:project", auth.checkToken, function (req, res, next) {
       }
       return res.sendStatus(204);
     })
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
 
 });
 
@@ -840,7 +840,7 @@ router.delete(
         }
         return res.sendStatus(204);
       })
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
 
   }
 );
@@ -877,7 +877,7 @@ router.delete(
         }
         return res.sendStatus(204);
       })
-    .catch((err) => forwardAxiosError(res, err, "mensagem fallback"))
+    .catch((err) => forwardAxiosError(res, err, "Could not complete the project request."))
 
   }
 );

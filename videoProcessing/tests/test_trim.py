@@ -242,7 +242,7 @@ class TrimTests(unittest.TestCase):
 
     def test_commit_failure_marks_failed_and_cleans_output(self):
         def fail(*args):
-            raise TrimError("PUBLICATION_FAILED", "Não foi possível guardar o resultado.", 503)
+            raise TrimError("PUBLICATION_FAILED", "Could not save the result.", 503)
         self.service.hooks = TrimHooks(self.ledger.accept, fail, self.ledger.abort)
         response = self.submit()
         task = self.wait(response.get_json()["id"])

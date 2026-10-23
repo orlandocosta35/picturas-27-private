@@ -12,16 +12,75 @@ import {
 import ProjectItem from "./project-item";
 import { useSession } from "@/providers/session-provider";
 import { useGetProjects, useResolveShareLink } from "@/lib/queries/projects";
-import { Search } from "lucide-react";
+import { Search, ListChecks, LoaderCircle, Trash2, X } from "lucide-react";
 import { Button } from "../ui/button";
 import { useEffect, useState } from "react";
 import { Transition } from "@headlessui/react";
-import { Project } from "@/lib/projects";
-import { useSearchParams } from "next/navigation";
+import { Project, fetchProject, deleteProject } from "@/lib/projects";
+import { useSearchParams, usePathname, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { Checkbox } from "../ui/checkbox";
+import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel,
+} from "../ui/alert-dialog";
 
 export default function ProjectList() {
   const session = useSession();
   const projects = useGetProjects(session.user._id, session.token);
+  const qc = useQueryClient();
+  const router = useRouter();
+  const pathname = usePathname();
+  const { toast } = useToast();
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function deleteSelected() {
+    if (deleting || selected.length === 0) return;
+    setDeleting(true);
+    const deleted: string[] = [];
+    const failed: string[] = [];
+    try {
+      for (const pid of selected) {
+        try {
+          const current = await fetchProject(session.user._id, pid, session.token);
+          if (!Number.isInteger(current.version) || current.version < 0) {
+            throw new Error("Invalid project version");
+          }
+          await deleteProject({
+            uid: session.user._id, pid, token: session.token,
+            projectVersion: current.version,
+          });
+          deleted.push(pid);
+        } catch {
+          failed.push(pid);
+        }
+      }
+      const key = ["projects", session.user._id, session.token];
+      qc.setQueryData<Project[]>(key, (old) => old?.filter((p) => !deleted.includes(p._id)));
+      for (const pid of deleted) {
+        qc.removeQueries({ queryKey: ["project", session.user._id, pid] });
+        qc.removeQueries({ queryKey: ["projectImages", session.user._id, pid] });
+        qc.removeQueries({ queryKey: ["projectResults", session.user._id, pid] });
+      }
+      if (deleted.some((pid) => pathname === `/dashboard/${pid}`)) router.push("/dashboard");
+      void qc.invalidateQueries({ queryKey: key });
+      setSelected(failed);
+      setSelecting(failed.length > 0);
+      setConfirmOpen(false);
+      toast({
+        title: failed.length ? "Some projects could not be deleted" : "Projects deleted",
+        description: `${deleted.length} deleted.${failed.length ? ` ${failed.length} could not be deleted and remain selected so you can try again.` : ""}`,
+        variant: failed.length ? "destructive" : "default",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  }
+
 
   const searchParams = useSearchParams();
   const shareId = searchParams.get("share"); // shareId da URL
@@ -67,8 +126,20 @@ export default function ProjectList() {
     <SidebarGroup>
       <SidebarGroupLabel className="flex justify-between items-center">
         <span>Your projects</span>
+        <div className="flex items-center gap-1">
         <Button
           variant="ghost"
+          className="size-fit p-1"
+          aria-label={selecting ? "Cancel selection" : "Select projects"}
+          title={selecting ? "Cancel selection" : "Select projects"}
+          disabled={deleting || !projects.data?.length}
+          onClick={() => { setSelecting(!selecting); setSelected([]); }}
+        >
+          {selecting ? <X className="size-4" /> : <ListChecks className="size-4" />}
+        </Button>
+        <Button
+          variant="ghost"
+          aria-label="Search projects"
           className="size-fit p-1"
           onClick={() => {
             setSearchOpen(!searchOpen);
@@ -78,7 +149,43 @@ export default function ProjectList() {
         >
           <Search className="size-[1em]" />
         </Button>
+        </div>
       </SidebarGroupLabel>
+      {selecting && (
+        <div className="mb-2 space-y-2 px-2">
+          <label className="flex items-center gap-2 text-xs">
+            <Checkbox
+              checked={filteredProjects.length > 0 && filteredProjects.every((p) => selected.includes(p._id))
+                ? true : filteredProjects.some((p) => selected.includes(p._id)) ? "indeterminate" : false}
+              disabled={deleting || filteredProjects.length === 0}
+              onCheckedChange={(checked) => setSelected((old) => checked
+                ? Array.from(new Set([...old, ...filteredProjects.map((p) => p._id)]))
+                : old.filter((id) => !filteredProjects.some((p) => p._id === id)))}
+            />
+            Select all visible projects
+          </label>
+          <Button variant="destructive" size="sm" className="w-full"
+            disabled={deleting || selected.length === 0} onClick={() => setConfirmOpen(true)}>
+            <Trash2 /> Delete selected ({selected.length})
+          </Button>
+        </div>
+      )}
+      <AlertDialog open={confirmOpen} onOpenChange={(open) => { if (!deleting) setConfirmOpen(open); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selected.length} project(s)?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The selected projects and their associated data will be deleted. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <Button variant="destructive" disabled={deleting} onClick={deleteSelected}>
+              {deleting ? <><LoaderCircle className="animate-spin" /> Deleting…</> : "Delete projects"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {projects.data && projects.data.length > 0 && (
         <Transition
@@ -105,7 +212,17 @@ export default function ProjectList() {
           {!projects.isLoading &&
             projects.data &&
             (filteredProjects.length > 0
-              ? filteredProjects.map((p) => <ProjectItem key={p._id} p={p} />)
+              ? filteredProjects.map((p) => selecting ? (
+                  <SidebarMenuItem key={p._id}>
+                    <label className="flex min-h-8 cursor-pointer items-center gap-2 rounded-md px-2 text-sm hover:bg-sidebar-accent">
+                      <Checkbox checked={selected.includes(p._id)} disabled={deleting}
+                        onCheckedChange={(checked) => setSelected((old) => checked
+                          ? [...old.filter((id) => id !== p._id), p._id]
+                          : old.filter((id) => id !== p._id))} />
+                      <span className="truncate">{p.name}</span>
+                    </label>
+                  </SidebarMenuItem>
+                ) : <ProjectItem key={p._id} p={p} />)
               : projects.data.length > 0 && (
                   <SidebarMenuItem>
                     <span className="pl-2">No search results.</span>

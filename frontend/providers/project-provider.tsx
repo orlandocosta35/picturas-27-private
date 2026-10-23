@@ -163,9 +163,9 @@ export function ProjectProvider({
 
           toast({
             variant: "destructive",
-            title: "Erro ao sincronizar alterações",
+            title: "Could not sync changes",
             description:
-              "Não foi possível atualizar no servidor o estado de alterações não guardadas. Tenta novamente.",
+              "Could not sync the unsaved changes status with the server. Please try again.",
           });
         },
       },

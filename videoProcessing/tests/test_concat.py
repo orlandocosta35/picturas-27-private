@@ -47,7 +47,7 @@ def make_video(path, seconds=2, size="160x96", audio=True, rate=12, variable=Fal
 
 
 class Ledger:
-    """Quota falsa com a regra do users: o Gratuito só tem uma reserva ativa."""
+    """Quota falsa com a regra do users: o Free só tem uma reserva ativa."""
 
     def __init__(self, reject=False):
         self.reserved, self.committed, self.aborted = set(), set(), set()
@@ -57,7 +57,7 @@ class Ledger:
     def accept(self, context, task):
         with self.lock:
             if self.reject or (context.profile == "free" and self.reserved):
-                raise VideoError("ACTIVE_TASK_LIMIT", "Já existe uma tarefa de vídeo ativa.", 409)
+                raise VideoError("ACTIVE_TASK_LIMIT", "A video task is already active.", 409)
             self.reserved.add(task["id"])
 
     def complete(self, context, task, output):
@@ -134,7 +134,7 @@ class ValidationTests(Fixtures):
     def test_first_readable_audio_track_is_used_and_the_others_reported(self):
         info = probe_input(self.two_tracks)
         self.assertEqual(info.audio_index, 1)
-        self.assertIn("2 faixas de áudio", info.notice)
+        self.assertIn("2 audio tracks", info.notice)
         self.assertIsNone(probe_input(self.a).notice)
 
     def test_select_audio_skips_tracks_ffmpeg_cannot_read(self):
@@ -143,7 +143,7 @@ class ValidationTests(Fixtures):
                    {"index": 2, "codec_type": "audio", "codec_name": "aac"}]
         self.assertEqual(select_audio(streams), (streams[2], 1))
         self.assertEqual(select_audio(streams[:2]), (None, 1))
-        self.assertIn("não pode ser lido", audio_notice(None, 1))
+        self.assertIn("cannot be read", audio_notice(None, 1))
 
     def test_unreadable_input_reports_its_position(self):
         broken = Path(self.fixtures.name) / "broken.mp4"
@@ -154,7 +154,7 @@ class ValidationTests(Fixtures):
     def test_audio_mismatch_names_the_audio_field(self):
         error = self.code([self.a, self.khz44])
         self.assertEqual(error.details["field"], "audio_sample_rate")
-        self.assertIn("frequência do áudio", error.details["detail"])
+        self.assertIn("audio sample rate", error.details["detail"])
 
     def test_describe_exposes_metadata_and_the_rn7_signature(self):
         info = describe(probe_input(self.a))
@@ -248,7 +248,7 @@ class ServiceTests(Fixtures):
         created = response.get_json()
         self.assertEqual(created["status"], "queued")
         self.assertEqual([i["name"] for i in created["inputs"]], ["b.mp4", "a.mp4"])
-        self.assertEqual(created["downloadName"], "b_concatenado.mp4")
+        self.assertEqual(created["downloadName"], "b_joined.mp4")
         self.assertNotIn("_userId", created)
 
         task = self.wait(created["id"])
@@ -299,7 +299,7 @@ class ServiceTests(Fixtures):
         self.assertAlmostEqual(task["result"]["duration"], 2 * info.duration, delta=0.2)
 
     def test_confirmed_conversion_joins_different_videos(self):
-        # Resolução, FPS e presença de áudio diferentes; o primeiro define o formato.
+        # Resolution, FPS e audio presence diferentes; o primeiro define o formato.
         response = self.submit(self.a, self.big, self.silent, self.fps30, convert=True)
         self.assertEqual(response.status_code, 202, response.get_json())
         created = response.get_json()
@@ -373,7 +373,7 @@ class ServiceTests(Fixtures):
 
     def test_failure_during_publication_marks_failed_and_releases(self):
         def broken_complete(context, task, output):
-            raise VideoError("LIBRARY_UNAVAILABLE", "Biblioteca indisponível.", 503)
+            raise VideoError("LIBRARY_UNAVAILABLE", "Library unavailable.", 503)
         self.service.hooks = VideoHooks(self.ledger.accept, broken_complete, self.ledger.abort)
         task = self.wait(self.submit(self.a, self.b).get_json()["id"])
         self.assertEqual((task["status"], task["errorCode"]), ("failed", "LIBRARY_UNAVAILABLE"))
@@ -444,7 +444,7 @@ class IntegrationTests(unittest.TestCase):
         def respond(request, **kwargs):
             calls.append(request)
             return io.BytesIO(b'{"ok":true}')
-        task = {"id": "c" * 36, "outputFormat": "mp4", "downloadName": "a_concatenado.mp4",
+        task = {"id": "c" * 36, "outputFormat": "mp4", "downloadName": "a_joined.mp4",
                 "result": {"duration": 5}}
         context = VideoContext("a" * 24, "free", "b" * 24)
         with patch("utils.integration.urlopen", side_effect=respond):

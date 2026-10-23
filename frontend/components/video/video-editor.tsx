@@ -1,5 +1,9 @@
 "use client";
 
+import { VideoEditorHeader } from "./video-editor-header";
+
+import { NumberInput } from "@/components/ui/number-input";
+
 import {
   Film,
   LoaderCircle,
@@ -17,7 +21,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -53,15 +56,15 @@ type VideoMetadata = {
 
 const RESOLUTION_PRESETS = [
   { label: "Original", width: null, height: null },
-  { label: "Retrato 3:4", width: 1080, height: 1440 },
-  { label: "Retrato 4:5", width: 1080, height: 1350 },
+  { label: "Portrait 3:4", width: 1080, height: 1440 },
+  { label: "Portrait 4:5", width: 1080, height: 1350 },
   { label: "Vertical 9:16", width: 1080, height: 1920 },
 ] as const;
 
 const RESIZE_MODES: Array<{ value: ResizeMode; label: string; description: string }> = [
-  { value: "contain", label: "Margens pretas", description: "Mantém todo o vídeo." },
-  { value: "cover", label: "Preencher com recorte", description: "Preenche a área e recorta." },
-  { value: "stretch", label: "Esticar", description: "Pode deformar a imagem." },
+  { value: "contain", label: "Letterbox", description: "Keeps the entire video." },
+  { value: "cover", label: "Crop to fill", description: "Fills the area and crops the edges." },
+  { value: "stretch", label: "Stretch", description: "May distort the image." },
 ];
 
 const OUTPUT_FORMATS: Array<{ value: VideoOutputFormat; label: string }> = [
@@ -152,7 +155,7 @@ export function VideoEditor({
   const handleFile = (selectedFile: File | undefined) => {
     if (!selectedFile) return;
     if (!ACCEPTED_VIDEO_TYPES.includes(selectedFile.type)) {
-      setError("Escolhe um vídeo MP4, WebM ou MOV.");
+      setError("Choose an MP4, WebM or MOV video.");
       return;
     }
 
@@ -212,11 +215,11 @@ export function VideoEditor({
   const handleProcess = (upscaleConfirmed = false) => {
     if (!file || !metadata) return;
     if (operation === "trim" && endSeconds <= startSeconds) {
-      setError("O fim do recorte deve ser posterior ao início.");
+      setError("The trim end time must be after the start time.");
       return;
     }
     if (operation !== "resize") {
-      setError("O recorte pertence ao UC-VID-002. Seleciona Redimensionar.");
+      setError("Select Resize to use this operation.");
       return;
     }
     if (
@@ -227,7 +230,7 @@ export function VideoEditor({
         width % 2 !== 0 ||
         height % 2 !== 0)
     ) {
-      setError("A resolução deve usar números inteiros pares de pelo menos 64 px.");
+      setError("Resolution must use even integers of at least 64 px.");
       return;
     }
 
@@ -239,7 +242,7 @@ export function VideoEditor({
       outputFormat === sourceFormat;
     if (hasNoChanges) {
       setError(
-        "A configuração selecionada não altera o vídeo. Escolhe outra resolução ou formato.",
+        "The selected settings do not change the video. Choose a different resolution or format.",
       );
       return;
     }
@@ -253,7 +256,7 @@ export function VideoEditor({
     }
 
     if (!userId || !projectId || !token) {
-      setError("É necessário iniciar sessão para processar o vídeo.");
+      setError("Sign in to process the video.");
       return;
     }
 
@@ -296,19 +299,19 @@ export function VideoEditor({
               setProgress(null);
               setError(
                 current.status === "cancelled"
-                  ? "O processamento do vídeo foi cancelado."
+                  ? "Video processing was canceled."
                   : typeof current.error === "string"
                     ? current.error
-                    : current.error?.message ?? "O processamento do vídeo falhou.",
+                    : current.error?.message ?? "Video processing failed.",
               );
             }
           } catch {
             communicationFailuresRef.current += 1;
             if (communicationFailuresRef.current >= 5) {
               if (progressTimerRef.current !== null) window.clearInterval(progressTimerRef.current);
-              setError("Não foi possível atualizar o progresso. Tenta novamente.");
+              setError("Could not update progress. Please try again.");
             } else {
-              setError("A ligação foi interrompida. A tentar novamente...");
+              setError("Connection interrupted. Retrying...");
             }
           }
         }, 1000);
@@ -319,9 +322,9 @@ export function VideoEditor({
         setError(
           error?.response?.status === 701 ||
           error?.response?.data?.error?.code === "QUOTA_EXCEEDED"
-            ? "Atingiste o limite diário de operações."
+            ? "You have reached your daily operation limit."
             : error?.response?.data?.error?.message ??
-              "Não foi possível iniciar o processamento do vídeo.",
+              "Could not start video processing.",
         );
       });
   };
@@ -335,7 +338,7 @@ export function VideoEditor({
       }
       setError(
         task.status === "cancelled"
-          ? "O processamento do vídeo foi cancelado."
+          ? "Video processing was canceled."
           : typeof task.error === "string"
             ? task.error
             : task.error?.message ?? null,
@@ -344,7 +347,7 @@ export function VideoEditor({
       setProgress(null);
       updateSession.mutate({ userId, token });
     } catch {
-      setError("Não foi possível cancelar o processamento do vídeo.");
+      setError("Could not cancel video processing.");
     }
   };
 
@@ -355,14 +358,10 @@ export function VideoEditor({
 
   const legacyEditor = (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-      <div>
-        <p className="text-sm font-medium text-primary">Fase 1 · MVP</p>
-        <h1 className="text-3xl font-bold tracking-tight">Tratamento de vídeo</h1>
-        <p className="mt-2 text-muted-foreground">
-          Seleciona um vídeo, configura uma operação e valida o fluxo antes de
-          ligar o processamento FFmpeg.
-        </p>
-      </div>
+      <VideoEditorHeader
+          title="Resize video"
+          description="Select a video and configure the output resolution, resize mode and format."
+        />
 
       {!file ? (
         <Card
@@ -374,13 +373,13 @@ export function VideoEditor({
               <Upload className="size-8" />
             </div>
             <div>
-              <p className="font-medium">Carrega um vídeo para começar</p>
+              <p className="font-medium">Upload a video to get started</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                MP4, WebM ou MOV
+                MP4, WebM or MOV
               </p>
             </div>
             <Button type="button" variant="outline">
-              Escolher vídeo
+              Choose video
             </Button>
             <input
               ref={inputRef}
@@ -404,11 +403,11 @@ export function VideoEditor({
                   {formatFileSize(file.size)} ·{" "}
                   {metadata
                     ? `${metadata.width} × ${metadata.height} · ${formatDuration(metadata.duration)}`
-                    : "A ler metadados..."}
+                    : "Reading metadata..."}
                 </CardDescription>
               </div>
               <Button
-                aria-label="Remover vídeo"
+                aria-label="Remove video"
                 size="icon"
                 variant="ghost"
                 onClick={clearFile}
@@ -429,9 +428,9 @@ export function VideoEditor({
 
           <Card>
             <CardHeader>
-              <CardTitle>Redimensionar</CardTitle>
+              <CardTitle>Resize</CardTitle>
               <CardDescription>
-                Escolhe a resolução, o modo de ajuste e o formato de saída.
+                Choose the resolution, resize mode and output format.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -439,30 +438,30 @@ export function VideoEditor({
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label htmlFor="trim-start">Início (segundos)</Label>
-                      <Input
+                      <Label htmlFor="trim-start">Start (seconds)</Label>
+                      <NumberInput
                         id="trim-start"
-                        type="number"
+                        label="Trim start"
                         min={0}
                         max={Math.max(0, endSeconds - 0.1)}
                         step={0.1}
                         value={startSeconds}
-                        onChange={(event) =>
-                          setStartSeconds(Number(event.target.value))
+                        onValueChange={(value) =>
+                          setStartSeconds(value)
                         }
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="trim-end">Fim (segundos)</Label>
-                      <Input
+                      <Label htmlFor="trim-end">End (seconds)</Label>
+                      <NumberInput
                         id="trim-end"
-                        type="number"
+                        label="Trim end"
                         min={Math.min(maxDuration, startSeconds + 0.1)}
                         max={maxDuration}
                         step={0.1}
                         value={endSeconds}
-                        onChange={(event) =>
-                          setEndSeconds(Number(event.target.value))
+                        onValueChange={(value) =>
+                          setEndSeconds(value)
                         }
                       />
                     </div>
@@ -491,7 +490,7 @@ export function VideoEditor({
               ) : (
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label>Resolução predefinida</Label>
+                    <Label>Resolution preset</Label>
                     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                       {RESOLUTION_PRESETS.map((preset) => {
                         const isSelected =
@@ -526,9 +525,9 @@ export function VideoEditor({
                         className="h-auto min-h-14 flex-col gap-0.5 py-2 text-center"
                         onClick={() => setCustomResolution(true)}
                       >
-                        Personalizada
+                        Custom
                         <span className="text-xs font-normal opacity-75">
-                          Até 3840×2160
+                          Up to 3840×2160
                         </span>
                       </Button>
                     </div>
@@ -537,32 +536,32 @@ export function VideoEditor({
                   {customResolution && (
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-2">
-                        <Label htmlFor="resize-width">Largura (px)</Label>
-                        <Input
+                        <Label htmlFor="resize-width">Width (px)</Label>
+                        <NumberInput
                           id="resize-width"
-                          type="number"
+                          label="Width"
                           min={64}
                           step={2}
                           value={width}
-                          onChange={(event) => setWidth(Number(event.target.value))}
+                          onValueChange={(value) => setWidth(value)}
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="resize-height">Altura (px)</Label>
-                        <Input
+                        <Label htmlFor="resize-height">Height (px)</Label>
+                        <NumberInput
                           id="resize-height"
-                          type="number"
+                          label="Height"
                           min={64}
                           step={2}
                           value={height}
-                          onChange={(event) => setHeight(Number(event.target.value))}
+                          onValueChange={(value) => setHeight(value)}
                         />
                       </div>
                     </div>
                   )}
 
                   <div className="space-y-2">
-                    <Label>Modo de ajuste</Label>
+                    <Label>Resize mode</Label>
                     <div className="grid gap-2">
                       {RESIZE_MODES.map((mode) => (
                         <Button
@@ -584,7 +583,7 @@ export function VideoEditor({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="resize-format">Formato de saída</Label>
+                    <Label htmlFor="resize-format">Output format</Label>
                     <select
                       id="resize-format"
                       value={outputFormat}
@@ -602,19 +601,16 @@ export function VideoEditor({
                   </div>
 
                   <p className="text-sm text-muted-foreground">
-                    Configuração: {width} × {height} ·{" "}
+                    Settings: {width} × {height} ·{" "}
                     {RESIZE_MODES.find((mode) => mode.value === resizeMode)?.label} ·{" "}
                     {outputFormat.toUpperCase()}
                   </p>
 
                   {aspectRatioChanged && (
                     <Alert>
-                      <AlertTitle>Relação de aspeto diferente</AlertTitle>
+                      <AlertTitle>Different aspect ratio</AlertTitle>
                       <AlertDescription>
-                        O vídeo original tem uma proporção diferente da resolução
-                        destino. Escolhe o modo de ajuste: margens pretas preserva
-                        todo o conteúdo, preencher com recorte pode cortar as
-                        margens e esticar pode deformar a imagem.
+                        The original video has a different aspect ratio from the output resolution. Choose a resize mode: letterbox preserves all content, crop to fill may crop the edges, and stretch may distort the image.
                       </AlertDescription>
                     </Alert>
                   )}
@@ -642,10 +638,10 @@ export function VideoEditor({
                   <div className="flex justify-between text-sm">
                     <span>
                       {progress === 100
-                        ? "Processamento concluído"
+                        ? "Processing complete"
                         : progress >= 99
-                          ? "A guardar o resultado..."
-                          : "A processar..."}
+                          ? "Saving the result..."
+                          : "Processing..."}
                     </span>
                     <span>{progress}%</span>
                   </div>
@@ -663,7 +659,7 @@ export function VideoEditor({
                 ) : (
                   <Play className="size-4" />
                 )}
-                {taskId !== null ? "A processar..." : "Processar vídeo"}
+                {taskId !== null ? "Processing..." : "Process video"}
               </Button>
               {taskId && progress !== null && progress < 100 && (
                 <Button
@@ -671,7 +667,7 @@ export function VideoEditor({
                   variant="outline"
                   onClick={cancelProcessing}
                 >
-                  Cancelar processamento
+                  Cancel processing
                 </Button>
               )}
               {downloadUrl && (
@@ -680,7 +676,7 @@ export function VideoEditor({
                   href={downloadUrl}
                   download={`resized-${file.name}`}
                 >
-                  Descarregar vídeo processado
+                  Download processed video
                 </a>
               )}
             </CardContent>
@@ -715,16 +711,15 @@ export function VideoEditor({
       <AlertDialog open={upscaleConfirmationOpen} onOpenChange={setUpscaleConfirmationOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Aumentar a resolução do vídeo?</AlertDialogTitle>
+            <AlertDialogTitle>Increase the video resolution?</AlertDialogTitle>
             <AlertDialogDescription>
-              A resolução escolhida é superior à original. Esta operação não
-              recupera detalhe e pode aumentar o tamanho do ficheiro.
+              The selected resolution is higher than the original. This does not restore detail and may increase the file size.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => handleProcess(true)}>
-              Continuar processamento
+              Continue processing
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

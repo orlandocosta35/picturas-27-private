@@ -92,7 +92,7 @@ def main():
         status, data = call("GET", f"{BASE}/tasks/{task_id}/download", auth)
         output = Path("/tmp") / task["downloadName"]
         output.write_bytes(data)
-        print("Resultado em", output)
+        print("Result em", output)
 
 
 if __name__ == "__main__":

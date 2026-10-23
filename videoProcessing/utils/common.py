@@ -67,7 +67,7 @@ def finite_number(value, name):
     try:
         result = float(value)
     except (TypeError, ValueError, OverflowError):
-        raise VideoError("INVALID_INTERVAL", f"{name} tem de ser um número finito.") from None
+        raise VideoError("INVALID_INTERVAL", f"{name} must be a finite number.") from None
     if not math.isfinite(result):
-        raise VideoError("INVALID_INTERVAL", f"{name} tem de ser um número finito.")
+        raise VideoError("INVALID_INTERVAL", f"{name} must be a finite number.")
     return result

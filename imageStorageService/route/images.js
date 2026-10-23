@@ -12,13 +12,13 @@ router.get("/:access/:userId/:projectId/:stage/:imageName", async (req, res) => 
 
   if (!Object.hasOwn(urlGetters, access)) {
     return res.status(400).json({
-      error: "O acesso deve ser internal ou public.",
+      error: "Access must be internal or public.",
     });
   }
 
   if (!allowedStages.includes(stage)) {
     return res.status(400).json({
-      error: "O estágio deve ser src, preview, preview_cache ou out.",
+      error: "Stage must be src, preview, preview_cache or out.",
     });
   }
 

@@ -12,7 +12,7 @@ async function getInternalUrl(userId, projectId, stage, imageName) {
   try {
     return await s3.getSignedUrlPromise("getObject", params);
   } catch (error) {
-    console.error("Erro ao gerar URL presignada:", error.message);
+    console.error("Could not generate presigned URL:", error.message);
     throw error;
   }
 }

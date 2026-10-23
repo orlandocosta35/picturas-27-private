@@ -28,7 +28,7 @@ def probe_audio(path):
         data = probe_json(path, ['-show_format', '-show_streams'])
     except VideoError as error:
         if error.code == 'UNREADABLE_VIDEO':
-            raise VideoError('UNREADABLE_AUDIO', 'Não foi possível ler o ficheiro de áudio.', 422) from None
+            raise VideoError('UNREADABLE_AUDIO', 'Could not read the audio file.', 422) from None
         raise
     streams = data.get('streams', [])
     audio = [s for s in streams if s.get('codec_type') == 'audio']
@@ -37,13 +37,13 @@ def probe_audio(path):
     formats = set(data.get('format', {}).get('format_name', '').split(','))
     supported = formats & {'mp3', 'wav', 'aac', 'ogg'}
     if len(audio) != 1 or video or not supported:
-        raise VideoError('UNSUPPORTED_AUDIO', 'Escolhe um ficheiro MP3, WAV, AAC ou OGG com uma faixa de áudio.', 415)
+        raise VideoError('UNSUPPORTED_AUDIO', 'Choose an MP3, WAV, AAC or OGG file with one audio track.', 415)
     try:
         duration = float(audio[0].get('duration', data['format'].get('duration')))
         if not math.isfinite(duration) or duration <= 0:
             raise ValueError
     except (ValueError, TypeError, KeyError):
-        raise VideoError('UNREADABLE_AUDIO', 'Não foi possível determinar a duração do áudio.', 422) from None
+        raise VideoError('UNREADABLE_AUDIO', 'Could not determine the audio duration.', 422) from None
     return AudioInfo(duration, next(iter(supported)))
 
 
@@ -54,23 +54,23 @@ def number(params, key, default, minimum, maximum):
             raise ValueError
         return value
     except (TypeError, ValueError, OverflowError):
-        raise VideoError('INVALID_AUDIO_PARAMETERS', f'{key} tem de estar entre {minimum:g} e {maximum:g}.') from None
+        raise VideoError('INVALID_AUDIO_PARAMETERS', f'{key} must be between {minimum:g} and {maximum:g}.') from None
 
 
 def plan_audio(info, original_duration, auxiliary, params):
     operation = params.get('operation')
     if operation not in {'volume', 'remove', 'overlay'}:
-        raise VideoError('INVALID_AUDIO_OPERATION', 'Escolhe ajustar volume, remover áudio ou sobrepor áudio.')
+        raise VideoError('INVALID_AUDIO_OPERATION', 'Choose adjust volume, remove audio or overlay audio.')
     if operation != 'overlay' and not info.has_audio:
-        raise VideoError('NO_AUDIO_TRACK', 'Este vídeo não tem áudio. Só é possível sobrepor um novo áudio.')
+        raise VideoError('NO_AUDIO_TRACK', 'This video has no audio. You can only overlay a new audio track.')
     if operation != 'overlay' and auxiliary is not None:
-        raise VideoError('UNEXPECTED_AUDIO', 'O ficheiro auxiliar só é usado na sobreposição.')
+        raise VideoError('UNEXPECTED_AUDIO', 'An additional audio file is only used for overlays.')
     result = dict(operation=operation, effectiveStartSeconds=0, effectiveEndSeconds=info.duration,
                   outputFormat=info.container, warnings=[])
     warnings = result['warnings']
     if operation == 'remove':
         if params.get('confirmRemove') != 'true':
-            warnings.append(dict(code='REMOVE_AUDIO', message='O resultado ficará sem faixa de áudio, sendo o original preservado.'))
+            warnings.append(dict(code='REMOVE_AUDIO', message='The result will have no audio track. The original is preserved.'))
         return {**result, 'status': 'confirmation_required' if warnings else 'ready'}
     volume = number(params, 'volume', 100, 0, 300)
     fade_in = number(params, 'fadeIn', 0, 0, 5)
@@ -79,23 +79,23 @@ def plan_audio(info, original_duration, auxiliary, params):
     result.update(volume=volume, fadeIn=fade_in, fadeOut=fade_out)
     if operation == 'overlay':
         if auxiliary is None:
-            raise VideoError('MISSING_AUDIO', 'É necessário carregar o áudio a sobrepor.')
+            raise VideoError('MISSING_AUDIO', 'Upload an audio file to overlay.')
         if auxiliary.duration > info.duration * 1.1 + EPSILON:
-            raise VideoError('AUDIO_TOO_LONG', 'O áudio não pode exceder 110% da duração do vídeo.')
+            raise VideoError('AUDIO_TOO_LONG', 'The audio duration cannot exceed 110% of the video duration.')
         mode = params.get('overlayMode')
         if mode not in {'mix', 'replace'}:
-            raise VideoError('INVALID_OVERLAY_MODE', 'Escolhe misturar ou substituir.')
+            raise VideoError('INVALID_OVERLAY_MODE', 'Choose Mix or Replace.')
         if not info.has_audio and mode != 'replace':
-            raise VideoError('NO_AUDIO_TRACK', 'Num vídeo sem áudio, escolhe substituir.')
+            raise VideoError('NO_AUDIO_TRACK', 'For a video without audio, choose Replace.')
         start = number(params, 'startSeconds', 0, 0, info.duration)
         if start >= info.duration:
-            raise VideoError('INVALID_AUDIO_START', 'O início tem de ser anterior ao fim do vídeo.')
+            raise VideoError('INVALID_AUDIO_START', 'The start time must be before the end of the video.')
         remaining = info.duration - start
         short = auxiliary.duration < remaining - EPSILON
         policy = params.get('shortPolicy', '')
         if short and policy not in {'repeat', 'silence'}:
             return {**result, 'status': 'choice_required', 'requiredChoice': 'shortPolicy',
-                    'message': 'O áudio é curto. Escolhe repetir ou deixá-lo terminar.',
+                    'message': 'The audio is shorter than the video. Choose Repeat or let it end.',
                     'audioDuration': auxiliary.duration, 'remainingDuration': remaining}
         repeat = short and policy == 'repeat'
         effective = remaining if repeat else min(auxiliary.duration, remaining)
@@ -104,15 +104,15 @@ def plan_audio(info, original_duration, auxiliary, params):
                       originalVolume=original_volume, auxiliaryDuration=auxiliary.duration,
                       shortPolicy=policy if short else None)
         if auxiliary.duration > remaining + EPSILON and params.get('confirmTrim') != 'true':
-            warnings.append(dict(code='TRIM_AUDIO', message='O áudio será cortado no fim do vídeo.'))
+            warnings.append(dict(code='TRIM_AUDIO', message='The audio will be trimmed at the end of the video.'))
     else:
         original_volume = 0
     if fade_in + fade_out > effective + EPSILON:
-        raise VideoError('INVALID_FADES', 'A soma dos fades não pode exceder a duração efetiva do áudio.')
+        raise VideoError('INVALID_FADES', 'The combined fade length cannot exceed the effective audio duration.')
     if (volume > 100 or original_volume > 100) and params.get('confirmAmplification') != 'true':
-        warnings.append(dict(code='AMPLIFICATION', message='Um volume acima de 100% pode saturar e distorcer o som.'))
+        warnings.append(dict(code='AMPLIFICATION', message='Volume above 100% may cause clipping and distort the sound.'))
     if operation == 'volume' and volume == 0 and params.get('confirmZero') != 'true':
-        warnings.append(dict(code='ZERO_VOLUME', message='0% deixa o som em silêncio. Podes escolher Remover áudio para eliminar a faixa.'))
+        warnings.append(dict(code='ZERO_VOLUME', message='0% mutes the sound. Choose Remove audio to delete the track.'))
     result['effectiveAudioDuration'] = effective
     return {**result, 'status': 'confirmation_required' if warnings else 'ready'}
 
@@ -176,7 +176,7 @@ class AudioService(VideoTaskService):
                 or abs(float(result.fps) - float(info.fps)) > EPSILON
                 or abs(result.duration - info.duration) > 0.1 + EPSILON
                 or result.has_audio != (task['operation'] != 'remove')):
-            raise VideoError('INVALID_RESULT', 'O resultado não preserva a imagem, duração ou faixa de áudio esperada.', 422)
+            raise VideoError('INVALID_RESULT', 'The result does not preserve the expected video stream, duration or audio track.', 422)
 
     def _stage(self, video, auxiliary, context, directory):
         limit, max_duration = profile_limits(context.profile)
@@ -189,11 +189,11 @@ class AudioService(VideoTaskService):
                     size += len(chunk)
                     if size > maximum:
                         raise VideoError('AUDIO_TOO_LARGE' if name == 'auxiliary' else 'INPUT_TOO_LARGE',
-                                        'O áudio excede 20 MB.' if name == 'auxiliary' else 'O vídeo excede o limite do perfil.', 413)
+                                        'The audio file exceeds 20 MB.' if name == 'auxiliary' else 'The video exceeds the profile limit.', 413)
                     target.write(chunk)
         info = probe_video(directory / 'input')
         if info.duration > max_duration + EPSILON:
-            raise VideoError('INPUT_TOO_LONG', 'O vídeo excede a duração permitida para o perfil.')
+            raise VideoError('INPUT_TOO_LONG', 'The video exceeds the duration limit for this profile.')
         streams = probe_json(directory / 'input', ['-show_streams']).get('streams', [])
         # REQ-VID-COM-005 (revisto): use the first readable audio track, ignore the rest.
         chosen, ignored = select_audio(streams)
@@ -208,20 +208,20 @@ class AudioService(VideoTaskService):
             original_duration = info.duration if audio else 0
         auxiliary_info = probe_audio(directory / 'auxiliary') if auxiliary else None
         if auxiliary_info and auxiliary_info.duration > info.duration * 1.1 + EPSILON:
-            raise VideoError('AUDIO_TOO_LONG', 'O áudio não pode exceder 110% da duração do vídeo.')
+            raise VideoError('AUDIO_TOO_LONG', 'The audio duration cannot exceed 110% of the video duration.')
         try:
             original_start = float(audio[0].get('start_time', info.start_time)) - info.start_time if audio else 0
             if not math.isfinite(original_start):
                 raise ValueError
         except (ValueError, TypeError):
-            raise VideoError('UNREADABLE_VIDEO', 'Não foi possível determinar a sincronização do áudio.', 422) from None
+            raise VideoError('UNREADABLE_VIDEO', 'Could not determine the audio synchronization.', 422) from None
         audio_stream = dict(index=chosen['index'] if chosen else None, notice=notice)
         return info, original_duration, auxiliary_info, original_start, audio_stream
 
     def submit_audio(self, video, auxiliary, params, context, inspect=False):
         self._context(context)
         if self._closed:
-            raise VideoError('SERVICE_CLOSED', 'O serviço está a terminar.', 503)
+            raise VideoError('SERVICE_CLOSED', 'The service is shutting down.', 503)
         task_id = str(uuid.uuid4())
         directory = self.root / task_id
         directory.mkdir()
@@ -275,7 +275,7 @@ def create_audio_blueprint(service, context_provider):
 
     @blueprint.errorhandler(RequestEntityTooLarge)
     def too_large(error):
-        return jsonify(error='O vídeo ou o áudio excede o tamanho permitido.', code='INPUT_TOO_LARGE'), 413
+        return jsonify(error='The video or audio exceeds the file size limit.', code='INPUT_TOO_LARGE'), 413
 
     def context():
         return service._context(context_provider())
@@ -285,7 +285,7 @@ def create_audio_blueprint(service, context_provider):
         request.max_content_length = profile_limits(caller.profile)[0] + AUDIO_MAX_BYTES + 131072
         video = request.files.get('video')
         if video is None:
-            raise VideoError('MISSING_VIDEO', 'É necessário enviar o vídeo do projeto.')
+            raise VideoError('MISSING_VIDEO', 'The project video is required.')
         task, status = service.submit_audio(video, request.files.get('audio'), request.form, caller, inspect)
         return jsonify(task), status
 

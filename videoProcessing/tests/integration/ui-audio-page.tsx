@@ -22,6 +22,6 @@ export default function Page() {
       <VideoEditor initialFile={file} {...context} />
     </main>
   ) : (
-    <p>A carregar…</p>
+    <p>Loading…</p>
   );
 }

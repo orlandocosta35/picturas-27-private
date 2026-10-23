@@ -1,4 +1,4 @@
-"""UC-VID-005: concatenação de vídeos.
+"""UC-VID-005: concatenação de videos.
 
 Quando as entradas são compatíveis segundo a RN7, a concatenação usa o concat
 demuxer do FFmpeg com cópia de streams, sem perda de qualidade. Quando não são,
@@ -45,11 +45,11 @@ AUDIO_RATE = 48000
 VIDEO_KEYS = ("codec_name", "profile", "width", "height", "pix_fmt", "time_base", "r_frame_rate")
 AUDIO_KEYS = ("codec_name", "sample_rate", "channels", "time_base")
 FIELD_NAMES = {
-    "container": "formato do ficheiro", "layout": "faixas do ficheiro", "rotation": "rotação", "codec_name": "codec de vídeo", "profile": "perfil do codec",
-    "width": "largura", "height": "altura", "pix_fmt": "formato de píxel",
-    "time_base": "base temporal do vídeo", "r_frame_rate": "FPS", "audio": "presença de áudio",
-    "audio_codec_name": "codec de áudio", "audio_sample_rate": "frequência do áudio",
-    "audio_channels": "canais de áudio", "audio_time_base": "base temporal do áudio",
+    "container": "file format", "layout": "file streams", "rotation": "rotation", "codec_name": "video codec", "profile": "codec profile",
+    "width": "width", "height": "height", "pix_fmt": "pixel format",
+    "time_base": "video time base", "r_frame_rate": "FPS", "audio": "audio presence",
+    "audio_codec_name": "audio codec", "audio_sample_rate": "audio sample rate",
+    "audio_channels": "audio channels", "audio_time_base": "audio time base",
 }
 
 
@@ -76,7 +76,7 @@ class ConcatInput:
 
     @property
     def display(self):
-        """Largura e altura como o vídeo é mostrado (com a rotação aplicada)."""
+        """Width e height como o vídeo é mostrado (com a rotation aplicada)."""
         width, height = self.video["width"], self.video["height"]
         return (height, width) if self.rotation % 180 == 90 else (width, height)
 
@@ -98,7 +98,7 @@ def _container(fmt, video):
         return "mov" if fmt.get("tags", {}).get("major_brand", "").strip() == "qt" else "mp4"
     if "webm" in names and video.get("codec_name") in {"vp8", "vp9", "av1"}:
         return "webm"
-    raise ConcatError("UNSUPPORTED_FORMAT", "O formato deste vídeo não é suportado.", 415)
+    raise ConcatError("UNSUPPORTED_FORMAT", "This video format is not supported.", 415)
 
 
 def _rotation(video):
@@ -142,9 +142,9 @@ def _describe(data, path, size):
     videos = [s for s in streams if s.get("codec_type") == "video"
               and not s.get("disposition", {}).get("attached_pic")]
     if len(videos) != 1:
-        raise ConcatError("UNSUPPORTED_STREAMS", "O vídeo tem de ter exatamente uma faixa de vídeo.", 415)
-    # REQ-VID-COM-005 (revisto): usa-se a primeira faixa de áudio legível; as
-    # outras (ex.: o áudio espacial APAC dos iPhones) são ignoradas com aviso.
+        raise ConcatError("UNSUPPORTED_STREAMS", "The video must contain exactly one video stream.", 415)
+    # REQ-VID-COM-005 (revisto): usa-se a primeira faixa de audio legível; as
+    # outras (ex.: o audio espacial APAC dos iPhones) são ignoradas com aviso.
     audio, ignored = select_audio(streams)
     fmt, video = data.get("format", {}), videos[0]
     try:
@@ -157,7 +157,7 @@ def _describe(data, path, size):
         # FPS variável é aceite (decisão do grupo, só no UC5): a cópia de streams
         # mantém o timestamp de cada frame. A RN7 compara o FPS nominal (r_frame_rate).
     except (KeyError, TypeError, ValueError, ZeroDivisionError):
-        raise ConcatError("UNREADABLE_VIDEO", "Não foi possível ler este vídeo.", 422) from None
+        raise ConcatError("UNREADABLE_VIDEO", "Could not read this video.", 422) from None
     return ConcatInput(
         path=path, container=_container(fmt, video), duration=duration, size=size,
         video={key: video.get(key) for key in VIDEO_KEYS},
@@ -204,12 +204,12 @@ def describe(item):
 def validate_count(count, profile):
     """RN1 e RN3; não precisa de ler os ficheiros, por isso corre primeiro."""
     if profile not in MAX_VIDEOS:
-        raise ConcatError("PROFILE_NOT_ALLOWED", "Este perfil não pode processar vídeo.", 403)
+        raise ConcatError("PROFILE_NOT_ALLOWED", "This profile cannot process video.", 403)
     if count < MIN_VIDEOS:
-        raise ConcatError("TOO_FEW_VIDEOS", "Selecione pelo menos dois vídeos para concatenar.")
+        raise ConcatError("TOO_FEW_VIDEOS", "Select at least two videos to join.")
     if count > MAX_VIDEOS[profile]:
         raise ConcatError("TOO_MANY_VIDEOS",
-                          f"O perfil permite concatenar no máximo {MAX_VIDEOS[profile]} vídeos.",
+                          f"This profile allows joining at most {MAX_VIDEOS[profile]} videos.",
                           maxVideos=MAX_VIDEOS[profile],
                           suggestPremium=profile == "free" and count <= MAX_VIDEOS["premium"])
 
@@ -221,12 +221,12 @@ def validate_limits(inputs, profile):
     for index, item in enumerate(inputs):
         if item.duration > max_duration:
             raise ConcatError("VIDEO_TOO_LONG",
-                              f"O vídeo {index + 1} excede o limite de {int(max_duration // 60)} minutos do perfil.",
+                              f"Video {index + 1} exceeds the limit of {int(max_duration // 60)} minutes for this profile.",
                               index=index,
                               suggestPremium=profile == "free" and item.duration <= premium_duration)
         if item.size > max_size:
             raise ConcatError("VIDEO_TOO_LARGE",
-                              f"O vídeo {index + 1} excede o limite de {max_size // MIB} MiB do perfil.",
+                              f"Video {index + 1} exceeds the limit of {max_size // MIB} MiB for this profile.",
                               413, index=index,
                               suggestPremium=profile == "free" and item.size <= premium_size)
 
@@ -242,7 +242,7 @@ def find_mismatch(inputs):
                          if expected != actual), None)
         if mismatch:
             return {"index": index, "field": mismatch,
-                    "detail": f"O vídeo {index + 1} difere do primeiro em: {FIELD_NAMES[mismatch]}."}
+                    "detail": f"Video {index + 1} differs from the first video in: {FIELD_NAMES[mismatch]}."}
     return None
 
 
@@ -277,8 +277,8 @@ def prepare_inputs(paths, profile, convert=False):
     if not convert:
         # Pede confirmação: converter demora mais e recodifica a imagem.
         raise ConcatError("CONVERSION_REQUIRED",
-                          "Os vídeos não são compatíveis para concatenação direta. "
-                          "Podem ser convertidos para o formato do primeiro vídeo.",
+                          "The videos are not compatible for direct joining. "
+                          "They can be converted to match the first video.",
                           409, target=target, **mismatch)
     return inputs, target
 
@@ -294,13 +294,13 @@ def write_list_file(inputs, list_path):
 
 def build_concat_command(list_path, output_path, container, audio_index=None):
     # Sem -xerror: o AAC de cada ficheiro termina uns ms depois do vídeo, o que gera
-    # um aviso "Non-monotonic DTS" na junção que o FFmpeg corrige sozinho. A duração
+    # um aviso "Non-monotonic DTS" na junção que o FFmpeg corrige sozinho. Duration
     # final é verificada depois (RN4), por isso um resultado errado não passa.
     command = ["ffmpeg", "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
                "-f", "concat", "-safe", "0", "-i", str(list_path),
                "-map", "0:v:0", "-sn", "-dn", "-c", "copy"]
     if audio_index is not None:
-        # Só a faixa de áudio escolhida; as faixas coincidem em todas as entradas (RN7).
+        # Só a faixa de audio escolhida; as faixas coincidem em todas as entradas (RN7).
         command[command.index("-sn"):command.index("-sn")] = ["-map", f"0:{audio_index}"]
     if container in {"mp4", "mov"}:
         command += ["-movflags", "+faststart"]
@@ -311,8 +311,8 @@ def build_convert_command(inputs, output_path, target):
     """Recodifica e junta as entradas com o filtro concat (REQ-VID-CON-012 revisto).
 
     Cada vídeo é ajustado à resolução do alvo sem deformar (margens pretas), ao
-    FPS do alvo e a 8 bits 4:2:0. O áudio é normalizado para 48 kHz estéreo; um
-    vídeo sem áudio recebe silêncio, para a imagem e o som não se desalinharem.
+    FPS do alvo e a 8 bits 4:2:0. O audio é normalizado para 48 kHz estéreo; um
+    vídeo no audio recebe silêncio, para a imagem e o som não se desalinharem.
     """
     width, height, fps = target["width"], target["height"], target["fps"]
     with_audio = any(item.audio is not None for item in inputs)
@@ -348,24 +348,24 @@ def build_convert_command(inputs, output_path, target):
 
 
 def verify_result(output_path, inputs, target=None):
-    """RN4 / REQ-VID-CON-008, mais resolução e áudio iguais às entradas."""
+    """RN4 / REQ-VID-CON-008, mais resolução e audio iguais às entradas."""
     try:
         result = probe_input(output_path)
     except ConcatError:
-        raise ConcatError("INVALID_RESULT", "Não foi possível ler o vídeo resultante.", 422) from None
+        raise ConcatError("INVALID_RESULT", "Could not read the output video.", 422) from None
     expected = sum(item.duration for item in inputs)
     if abs(result.duration - expected) > DURATION_TOLERANCE * len(inputs):
         raise ConcatError("DURATION_MISMATCH",
-                          "A duração do resultado não corresponde à soma das durações.", 422,
+                          "The output duration does not match the sum of the input durations.", 422,
                           expected=expected, actual=result.duration)
     first = inputs[0]
     size = (target["width"], target["height"]) if target else (first.video["width"], first.video["height"])
     if (result.video["width"], result.video["height"]) != size:
-        raise ConcatError("INVALID_RESULT", "A resolução do resultado não corresponde às entradas.", 422)
-    # Na conversão, o resultado tem áudio se alguma entrada tiver.
+        raise ConcatError("INVALID_RESULT", "The output resolution does not match the inputs.", 422)
+    # Na conversão, o resultado tem audio se alguma entrada tiver.
     has_audio = any(item.audio is not None for item in (inputs if target else inputs[:1]))
     if (result.audio is not None) != has_audio:
-        raise ConcatError("INVALID_RESULT", "O áudio do resultado não corresponde às entradas.", 422)
+        raise ConcatError("INVALID_RESULT", "The output audio does not match the inputs.", 422)
     return {"duration": result.duration, "width": result.video["width"],
             "height": result.video["height"], "fps": float(Fraction(result.video["r_frame_rate"])),
             "size": result.size, "hasAudio": result.audio is not None, "inputs": len(inputs)}
@@ -379,7 +379,7 @@ class ConcatService(VideoTaskService):
     def submit(self, uploads, context, convert=False):
         self._context(context)
         if self._closed:
-            raise ConcatError("SERVICE_CLOSED", "O serviço está a terminar.", 503)
+            raise ConcatError("SERVICE_CLOSED", "The service is shutting down.", 503)
         validate_count(len(uploads), context.profile)
         max_bytes = profile_limits(context.profile)[0]
         task_id = str(uuid.uuid4())
@@ -398,7 +398,7 @@ class ConcatService(VideoTaskService):
                         size += len(chunk)
                         if size > max_bytes:
                             raise ConcatError("VIDEO_TOO_LARGE",
-                                              f"O vídeo {index + 1} excede o limite de {max_bytes // MIB} MiB do perfil.",
+                                              f"Video {index + 1} exceeds the limit of {max_bytes // MIB} MiB for this profile.",
                                               413, index=index,
                                               suggestPremium=context.profile == "free")
                         output.write(chunk)
@@ -411,13 +411,13 @@ class ConcatService(VideoTaskService):
             task = {"id": task_id, "status": "queued", "progress": 0, "createdAt": utc_now(),
                     "outputFormat": container,
                     # RN6; o projects guarda por ID de tarefa, por isso nomes iguais não se substituem.
-                    "downloadName": f"{Path(names[0]).stem}_concatenado.{container}",
+                    "downloadName": f"{Path(names[0]).stem}_joined.{container}",
                     "inputs": [{"name": name, "duration": item.duration}
                                for name, item in zip(names, inputs)],
                     "expectedDuration": sum(item.duration for item in inputs),
                     # "copy" (sem perda) ou "convert" (recodificado para target).
                     "mode": "copy" if target is None else "convert", "target": target,
-                    "warnings": [f"Vídeo {index + 1}: {item.notice}"
+                    "warnings": [f"Video {index + 1}: {item.notice}"
                                  for index, item in enumerate(inputs) if item.notice],
                     "_userId": context.user_id, "_projectId": context.project_id,
                     "_profile": context.profile}
@@ -463,13 +463,13 @@ class ConcatService(VideoTaskService):
                                                  inputs[0].audio_index))
             self._execute(job, command, task["expectedDuration"], deadline)
             if time.monotonic() >= deadline:
-                raise ConcatError("PROCESSING_TIMEOUT", "O tempo máximo de processamento foi excedido.")
+                raise ConcatError("PROCESSING_TIMEOUT", "The maximum processing time was exceeded.")
             result = verify_result(output, inputs, target)
             with job.lock:
                 if job.cancelled.is_set():
                     return
                 if time.monotonic() >= deadline:
-                    raise ConcatError("PROCESSING_TIMEOUT", "O tempo máximo de processamento foi excedido.")
+                    raise ConcatError("PROCESSING_TIMEOUT", "The maximum processing time was exceeded.")
                 task["result"] = result
                 # Publica na biblioteca e consome a quota; tem de compensar se falhar.
                 self.hooks.complete(job.context, self.public(task), output)
@@ -503,7 +503,7 @@ def create_concat_blueprint(service, context_provider, library_provider=None):
 
     @blueprint.errorhandler(RequestEntityTooLarge)
     def handle_large_upload(error):
-        return jsonify(error="Os vídeos excedem o tamanho permitido para o perfil.", code="INPUT_TOO_LARGE"), 413
+        return jsonify(error="The videos exceed the file size limit for this profile.", code="INPUT_TOO_LARGE"), 413
 
     def context():
         return service._context(context_provider())

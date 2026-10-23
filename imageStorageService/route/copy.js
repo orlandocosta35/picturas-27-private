@@ -12,7 +12,7 @@ router.post("/:userId/:projectId/:fromStage/:toStage/:fileName", async (req, res
 
   if (!allowedStages.includes(fromStage) || !allowedStages.includes(toStage)) {
     return res.status(400).json({
-      error: "fromStage/toStage inválidos. Use src, preview, preview_cache ou out.",
+      error: "Invalid fromStage/toStage. Use src, preview, preview_cache or out.",
     });
   }
 

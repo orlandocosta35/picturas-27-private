@@ -19,12 +19,12 @@ from utils.tasks import VideoTaskService
 LOGGER = logging.getLogger(__name__)
 
 def validate_interval(start, end, duration):
-    start, end = _number(start, "O início"), _number(end, "O fim")
+    start, end = _number(start, "Start"), _number(end, "End")
     if start < 0 or end > duration + EPSILON or start >= end:
-        raise TrimError("INVALID_INTERVAL", "O início tem de ser anterior ao fim e ambos têm de estar dentro do vídeo.")
+        raise TrimError("INVALID_INTERVAL", "The start must be before the end, and both must be within the video.")
     end = min(end, duration)
     if end - start < 1 - EPSILON:
-        raise TrimError("INTERVAL_TOO_SHORT", "O intervalo tem de ter pelo menos um segundo.")
+        raise TrimError("INTERVAL_TOO_SHORT", "The range must be at least one second long.")
     return start, end
 
 
@@ -42,26 +42,26 @@ def keyframe_points(path, info):
     if len(points) <= 2:
         # An all-intra/single-GOP video can have only its first keyframe.
         # EOF is a valid end, but it is not a valid start point.
-        LOGGER.debug("Vídeo com um único ponto inicial de corte")
+        LOGGER.debug("Video with a single initial trim point")
     return sorted(points)
 
 
 def plan_trim(path, start, end, mode="fast", info=None):
     if mode not in {"precise", "fast"}:
-        raise TrimError("INVALID_MODE", "O modo tem de ser precise ou fast.")
+        raise TrimError("INVALID_MODE", "Mode must be precise or fast.")
     info = info or probe_video(path)
     start, end = validate_interval(start, end, info.duration)
     plan = dict(mode=mode, requestedStartSeconds=start, requestedEndSeconds=end,
                 effectiveStartSeconds=start, effectiveEndSeconds=end)
     if abs(start) <= EPSILON and abs(end - info.duration) <= EPSILON:
-        return {**plan, "status": "no_changes", "message": "Não há nada a recortar."}
+        return {**plan, "status": "no_changes", "message": "There is nothing to trim."}
     if mode == "fast":
         points = keyframe_points(path, info)
         effective_start = points[max(0, bisect_right(points, start + EPSILON) - 1)]
         effective_end = points[max(0, bisect_right(points, end + EPSILON) - 1)]
         if effective_end - effective_start < 1 - EPSILON:
             raise TrimError("EFFECTIVE_INTERVAL_TOO_SHORT",
-                            "O intervalo efetivo é inferior a um segundo. Altere os tempos ou escolha Preciso.",
+                            "The effective range is shorter than one second. Change the times or choose Precise mode.",
                             effectiveStartSeconds=effective_start, effectiveEndSeconds=effective_end)
         plan.update(effectiveStartSeconds=effective_start, effectiveEndSeconds=effective_end)
     changed = any(abs(plan[f"effective{side}Seconds"] - plan[f"requested{side}Seconds"]) > EPSILON
@@ -84,7 +84,7 @@ def build_trim_command(source, destination, info, plan, probe_timeout=60):
                     if packet.get("pts_time") is not None
                     and start - EPSILON <= float(packet["pts_time"]) - info.start_time < end - EPSILON)
         if not count:
-            raise TrimError("UNREADABLE_VIDEO", "Não foi possível determinar os fotogramas do corte.", 422)
+            raise TrimError("UNREADABLE_VIDEO", "Could not determine the trim frames.", 422)
         command += ["-c", "copy", "-frames:v", str(count)]
     else:
         command += ["-c:v", "libvpx-vp9" if info.container == "webm" else "libx264",
@@ -102,7 +102,7 @@ class TrimService(VideoTaskService):
     def submit(self, upload, start, end, mode, context):
         self._context(context)
         if self._closed:
-            raise TrimError("SERVICE_CLOSED", "O serviço está a terminar.", 503)
+            raise TrimError("SERVICE_CLOSED", "The service is shutting down.", 503)
         max_bytes, max_duration = profile_limits(context.profile)
         task_id = str(uuid.uuid4())
         directory = self.root / task_id
@@ -117,11 +117,11 @@ class TrimService(VideoTaskService):
                 while chunk := upload.stream.read(1024 * 1024):
                     size += len(chunk)
                     if size > max_bytes:
-                        raise TrimError("INPUT_TOO_LARGE", "O vídeo excede o tamanho permitido para o perfil.", 413)
+                        raise TrimError("INPUT_TOO_LARGE", "The video exceeds the file size limit for this profile.", 413)
                     output.write(chunk)
             info = probe_video(source)
             if info.duration > max_duration + EPSILON:
-                raise TrimError("INPUT_TOO_LONG", "O vídeo excede a duração permitida para o perfil.")
+                raise TrimError("INPUT_TOO_LONG", "The video exceeds the duration limit for this profile.")
             plan = plan_trim(source, start, end, mode, info)
             if plan["status"] != "ready":
                 return plan, 200
@@ -130,7 +130,7 @@ class TrimService(VideoTaskService):
             end_name = f"{plan['effectiveEndSeconds']:.3f}".replace(".", "s")
             task = {**plan, "id": task_id, "status": "queued", "progress": 0,
                     "createdAt": _now(), "outputFormat": info.container,
-                    "downloadName": f"{Path(original).stem}_corte_{start_name}-{end_name}.{info.container}",
+                    "downloadName": f"{Path(original).stem}_trim_{start_name}-{end_name}.{info.container}",
                     "_userId": context.user_id, "_projectId": context.project_id,
                     "_profile": context.profile}
             # Integration must make reservation/concurrency checks atomic by task ID.
@@ -171,11 +171,11 @@ class TrimService(VideoTaskService):
                 while chunk := upload.stream.read(1024 * 1024):
                     size += len(chunk)
                     if size > max_bytes:
-                        raise TrimError("INPUT_TOO_LARGE", "O vídeo excede o tamanho permitido para o perfil.", 413)
+                        raise TrimError("INPUT_TOO_LARGE", "The video exceeds the file size limit for this profile.", 413)
                     output.write(chunk)
             info = probe_video(source)
             if info.duration > max_duration + EPSILON:
-                raise TrimError("INPUT_TOO_LONG", "O vídeo excede a duração permitida para o perfil.")
+                raise TrimError("INPUT_TOO_LONG", "The video exceeds the duration limit for this profile.")
             return {"durationSeconds": info.duration, "keyframes": keyframe_points(source, info)}
 
 
@@ -185,9 +185,9 @@ class TrimService(VideoTaskService):
 
     def _validate_result(self, info, result, task):
         if (result.width, result.height) != (info.width, info.height):
-            raise TrimError("INVALID_RESULT", "A resolução do resultado não corresponde ao original.", 422)
+            raise TrimError("INVALID_RESULT", "The output resolution does not match the original.", 422)
         if result.has_audio != info.has_audio:
-            raise TrimError("INVALID_RESULT", "O áudio do resultado não corresponde ao original.", 422)
+            raise TrimError("INVALID_RESULT", "The output audio does not match the original.", 422)
 
 
 def create_trim_blueprint(service, context_provider):
@@ -204,7 +204,7 @@ def create_trim_blueprint(service, context_provider):
 
     @blueprint.errorhandler(RequestEntityTooLarge)
     def handle_large_upload(error):
-        return jsonify(error="O vídeo excede o tamanho permitido para o perfil.", code="INPUT_TOO_LARGE"), 413
+        return jsonify(error="The video exceeds the file size limit for this profile.", code="INPUT_TOO_LARGE"), 413
 
     def context():
         return service._context(context_provider())
@@ -217,7 +217,7 @@ def create_trim_blueprint(service, context_provider):
         request.max_content_length = max_bytes + 131072
         video = request.files.get("video")
         if video is None:
-            raise TrimError("MISSING_VIDEO", "É necessário enviar um vídeo.")
+            raise TrimError("MISSING_VIDEO", "A video file is required.")
         task, status = service.submit(video, request.form.get("startSeconds"),
                                       request.form.get("endSeconds"), request.form.get("mode", "fast"), caller)
         return jsonify(task), status
@@ -229,7 +229,7 @@ def create_trim_blueprint(service, context_provider):
         request.max_content_length = max_bytes + 131072
         video = request.files.get("video")
         if video is None:
-            raise TrimError("MISSING_VIDEO", "É necessário enviar um vídeo.")
+            raise TrimError("MISSING_VIDEO", "A video file is required.")
         return jsonify(service.keyframes(video, caller))
 
     @blueprint.get("/tasks")

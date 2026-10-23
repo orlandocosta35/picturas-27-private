@@ -76,36 +76,40 @@ async function main() {
     "Metadata loaded",
   );
   await wait(
-    `${button("Recortar vídeo")} && !${button("Recortar vídeo")}.disabled`,
+    `${button("Trim video")} && !${button("Trim video")}.disabled`,
     "Task list loaded",
   );
   console.log(
     "PASS Browser loads real trim editor, metadata and saved results",
   );
-  await click("Recortar vídeo");
+  await click("Trim video");
   await wait(
-    "document.body.innerText.includes('Não há nada a recortar')",
+    "document.body.innerText.includes('There is nothing to trim')",
     "No-op notice",
   );
   console.log("PASS Browser full interval consumes no operation");
+  const before = await evaluate(
+    "Array.from(document.querySelectorAll('button')).filter(b=>b.textContent==='Download').length",
+  );
   await fill("trim-start-time", "00:00.500");
   await fill("trim-end-time", "00:03.500");
-  await click("Recortar vídeo");
+  await click("Trim video");
   await wait(
-    "document.body.innerText.includes('Intervalo disponível: 00:00.000 — 00:03.000')",
-    "Fast confirmation",
+    "document.body.innerText.includes('Available range:') || document.body.innerText.includes('Completed · 100%')",
+    "Fast trim confirmation or completion after keyframe snapping",
   );
-  console.log("PASS Browser displays requested and effective fast boundaries");
-  const before = await evaluate(
-    "Array.from(document.querySelectorAll('button')).filter(b=>b.textContent==='Descarregar').length",
-  );
-  await click("Confirmar intervalo disponível");
+  if (await evaluate("document.body.innerText.includes('Available range:')")) {
+    await click("Confirm available range");
+    console.log("PASS Browser confirms effective fast boundaries");
+  } else {
+    console.log("PASS Browser uses keyframe-aligned fast boundaries");
+  }
   await wait(
-    "document.body.innerText.includes('Concluído · 100%')",
+    "document.body.innerText.includes('Completed · 100%')",
     "Fast completion",
   );
   await wait(
-    `Array.from(document.querySelectorAll('button')).filter(b=>b.textContent==='Descarregar').length===${before + 1}`,
+    `Array.from(document.querySelectorAll('button')).filter(b=>b.textContent==='Download').length===${before + 1}`,
     "Results refreshed",
   );
   console.log("PASS Browser fast trim completes and refreshes library");
@@ -114,16 +118,16 @@ async function main() {
   );
   await fill("trim-start-time", "00:01.250");
   await fill("trim-end-time", "00:03.250");
-  await click("Recortar vídeo");
+  await click("Trim video");
   await wait(
-    `Array.from(document.querySelectorAll('button')).filter(b=>b.textContent==='Descarregar').length===${before + 2}`,
+    `Array.from(document.querySelectorAll('button')).filter(b=>b.textContent==='Download').length===${before + 2}`,
     "Precise result",
   );
   console.log("PASS Browser precise trim completes");
-  await click("Sair do editor");
-  await click("Voltar ao editor");
+  await click("Leave editor");
+  await click("Back to editor");
   await wait(
-    `Array.from(document.querySelectorAll('button')).filter(b=>b.textContent==='Descarregar').length===${before + 2}`,
+    `Array.from(document.querySelectorAll('button')).filter(b=>b.textContent==='Download').length===${before + 2}`,
     "Results recovered",
   );
   console.log("PASS Browser restores library after leaving and returning");

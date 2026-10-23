@@ -48,7 +48,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const demoSession: SessionData = {
       user: {
         _id: isVideoDemo ? "video-demo" : "auth-visitor",
-        name: isVideoDemo ? "Demonstração" : undefined,
+        name: isVideoDemo ? "Demo" : undefined,
         type: "anonymous",
         operations: [],
         remaining_operations: null,

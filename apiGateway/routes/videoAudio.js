@@ -36,8 +36,8 @@ function auxiliary(req, res, next) {
       return res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({
         error:
           error.code === "LIMIT_FILE_SIZE"
-            ? "O áudio excede 20 MB."
-            : "O carregamento do áudio é inválido.",
+            ? "The audio file exceeds 20 MB."
+            : "Invalid audio upload.",
         code: error.code,
       });
     next();
@@ -52,7 +52,7 @@ async function submit(req, res, inspect) {
       sourceId &&
       (typeof sourceId !== "string" || !/^[a-f0-9-]{36}$/i.test(sourceId))
     )
-      throw Object.assign(new Error("Resultado de origem inválido."), {
+      throw Object.assign(new Error("Invalid source result."), {
         status: 400,
       });
     const sourcePath = sourceId ? `results/${sourceId}/download` : "source";

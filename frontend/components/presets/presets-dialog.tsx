@@ -60,10 +60,10 @@ export function PresetsDialog() {
   const createDisabled = createPreset.isPending || !hasMinTools || maxReached;
 
   const createPlaceholder = !hasMinTools
-    ? "Seleciona ≥2 ferramentas para criar"
+    ? "Select at least 2 tools to create a preset"
     : maxReached
-      ? "Limite de 4 presets atingido"
-      : "Nome do preset…";
+      ? "Limit of 4 presets reached"
+      : "Preset name…";
 
   const currentToolsForPreset: PresetTool[] = useMemo(() => {
     return project.tools.map((t) => ({ procedure: t.procedure, params: t.params }));
@@ -91,8 +91,8 @@ export function PresetsDialog() {
   function handleCreate() {
       if (maxReached) {
         toast({
-          title: "Limite atingido",
-          description: "Já tens 4 presets guardados. Elimina um para poderes criar outro.",
+          title: "Limit reached",
+          description: "You already have 4 saved presets. Delete one to create another.",
           variant: "destructive",
         });
         return;
@@ -100,8 +100,8 @@ export function PresetsDialog() {
 
       if (!hasMinTools) {
         toast({
-          title: "Preset indisponível",
-          description: "Seleciona pelo menos 2 ferramentas antes de guardar um preset.",
+          title: "Preset unavailable",
+          description: "Select at least 2 tools before saving a preset.",
           variant: "destructive",
         });
         return;
@@ -109,7 +109,7 @@ export function PresetsDialog() {
 
     const trimmed = name.trim();
     if (!trimmed) {
-      toast({ title: "Nome em falta", description: "Escolhe um nome para o preset.", variant: "destructive" });
+      toast({ title: "Name required", description: "Choose a name for the preset.", variant: "destructive" });
       return;
     }
 
@@ -117,15 +117,15 @@ export function PresetsDialog() {
       { name: trimmed, tools: currentToolsForPreset },
       {
         onSuccess: () => {
-          toast({ title: "Preset guardado." });
+          toast({ title: "Preset saved." });
           setName("");
         },
         onError: (error: any) => {
           // 409 -> nome duplicado
           const msg = typeof error?.response?.data === "string" ? error.response.data : null;
           toast({
-            title: "Erro ao guardar preset",
-            description: msg ?? "Tenta outro nome.",
+            title: "Could not save preset",
+            description: msg ?? "Try a different name.",
             variant: "destructive",
           });
         },
@@ -148,7 +148,7 @@ export function PresetsDialog() {
     if (replaceTools) patch.tools = currentToolsForPreset;
 
     if (Object.keys(patch).length === 0) {
-        toast({ title: "Nada para atualizar." });
+        toast({ title: "Nothing to update." });
         return;
     }
 
@@ -160,8 +160,8 @@ export function PresetsDialog() {
             setEditingId(null);
         },
         onError: (error: any) => {
-            const msg = typeof error?.response?.data === "string" ? error.response.data : "Erro ao atualizar preset.";
-            toast({ title: "Erro", description: msg, variant: "destructive" });
+            const msg = typeof error?.response?.data === "string" ? error.response.data : "Could not update preset.";
+            toast({ title: "Error", description: msg, variant: "destructive" });
         },
         },
     );
@@ -178,8 +178,8 @@ export function PresetsDialog() {
             setDeletingId(null);
         },
         onError: (error: any) => {
-            const msg = typeof error?.response?.data === "string" ? error.response.data : "Erro ao eliminar preset.";
-            toast({ title: "Erro", description: msg, variant: "destructive" });
+            const msg = typeof error?.response?.data === "string" ? error.response.data : "Could not delete preset.";
+            toast({ title: "Error", description: msg, variant: "destructive" });
         },
         },
     );
@@ -193,14 +193,14 @@ export function PresetsDialog() {
             const link = `${window.location.origin}/api-gateway/users/presets/share/${shareId}`;
             try {
             await navigator.clipboard.writeText(link);
-            toast({ title: "Link copiado." });
+            toast({ title: "Link copied." });
             } catch {
             toast({ title: "Link gerado", description: link });
             }
         },
         onError: (error: any) => {
-            const msg = typeof error?.response?.data === "string" ? error.response.data : "Erro ao partilhar preset.";
-            toast({ title: "Erro", description: msg, variant: "destructive" });
+            const msg = typeof error?.response?.data === "string" ? error.response.data : "Could not share preset.";
+            toast({ title: "Error", description: msg, variant: "destructive" });
         },
         },
     );
@@ -227,26 +227,26 @@ export function PresetsDialog() {
             onChange={(e) => setName(e.target.value)}
           />
           <Button onClick={handleCreate} disabled={createDisabled}>
-            Guardar
+            Save
           </Button>
         </div>
 
         <Tabs defaultValue="defaults" className="mt-4">
           <TabsList>
-            <TabsTrigger value="defaults">Predefinidos</TabsTrigger>
+            <TabsTrigger value="defaults">Built-in presets</TabsTrigger>
             <TabsTrigger value="mine">Meus Filtros</TabsTrigger>
           </TabsList>
 
           <TabsContent value="defaults" className="space-y-2 mt-3">
-            {isLoading && <p className="text-sm text-muted-foreground">A carregar…</p>}
+            {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
             {!isLoading && (data?.defaultPresets?.length ?? 0) === 0 && (
-              <p className="text-sm text-muted-foreground">Sem presets predefinidos.</p>
+              <p className="text-sm text-muted-foreground">No built-in presets.</p>
             )}
           {data?.defaultPresets?.map((p) => (
             <div key={p.id} className="flex items-center justify-between border rounded-md p-2 gap-2">
               <div className="text-sm flex-1 truncate">{p.name}</div>
               <Button size="sm" onClick={() => applyPreset(p.tools)}>
-                Aplicar
+                Apply
               </Button>
             </div>
           ))}
@@ -254,22 +254,22 @@ export function PresetsDialog() {
           </TabsContent>
 
           <TabsContent value="mine" className="space-y-2 mt-3">
-            {isLoading && <p className="text-sm text-muted-foreground">A carregar…</p>}
+            {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
             {!isLoading && (data?.userPresets?.length ?? 0) === 0 && (
-              <p className="text-sm text-muted-foreground">Ainda não tens presets guardados.</p>
+              <p className="text-sm text-muted-foreground">You have no saved presets yet.</p>
             )}
             {data?.userPresets?.map((p) => (
               <div key={p._id} className="flex items-center justify-between border rounded-md p-2 gap-2">
                 <div className="text-sm flex-1 truncate">{p.name}</div>
 
                 <div className="flex items-center gap-2">
-                  <Button size="sm" onClick={() => applyPreset(p.tools)}>Aplicar</Button>
-                  <Button size="sm" variant="outline" onClick={() => openEdit(p._id, p.name)}>Editar</Button>
+                  <Button size="sm" onClick={() => applyPreset(p.tools)}>Apply</Button>
+                  <Button size="sm" variant="outline" onClick={() => openEdit(p._id, p.name)}>Edit</Button>
                   <Button size="sm" variant="outline" onClick={() => copyShareLink(p._id)} disabled={sharePreset.isPending}>
-                    Partilhar
+                    Share
                   </Button>
                   <Button size="sm" variant="destructive" onClick={() => setDeletingId(p._id)}>
-                    Apagar
+                    Delete
                   </Button>
                 </div>
               </div>
@@ -280,13 +280,13 @@ export function PresetsDialog() {
         <Dialog open={!!editingId} onOpenChange={(v) => !v && setEditingId(null)}>
             <DialogContent className="max-w-md">
                 <DialogHeader>
-                <DialogTitle>Editar preset</DialogTitle>
-                <DialogDescription>Atualiza o nome e/ou substitui as ferramentas.</DialogDescription>
+                <DialogTitle>Edit preset</DialogTitle>
+                <DialogDescription>Update the name or replace the tools.</DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-3">
                 <div className="grid gap-2">
-                    <Label>Novo nome</Label>
+                    <Label>New name</Label>
                     <Input value={editingName} onChange={(e) => setEditingName(e.target.value)} />
                 </div>
 
@@ -296,15 +296,15 @@ export function PresetsDialog() {
                     checked={replaceTools}
                     onChange={(e) => setReplaceTools(e.target.checked)}
                     />
-                    Substituir ferramentas pelas ferramentas atuais do projeto
+                    Replace tools with the current project tools
                 </label>
 
                 <div className="flex justify-end gap-2">
                     <Button variant="outline" onClick={() => setEditingId(null)}>
-                    Cancelar
+                    Cancel
                     </Button>
                     <Button onClick={confirmEdit} disabled={updatePreset.isPending}>
-                    Guardar
+                    Save
                     </Button>
                 </div>
                 </div>
@@ -315,12 +315,12 @@ export function PresetsDialog() {
             <DialogContent className="max-w-md">
                 <DialogHeader>
                 <DialogTitle>Eliminar preset</DialogTitle>
-                <DialogDescription>Esta ação não pode ser desfeita.</DialogDescription>
+                <DialogDescription>This action cannot be undone.</DialogDescription>
                 </DialogHeader>
 
                 <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setDeletingId(null)}>
-                    Cancelar
+                    Cancel
                 </Button>
                 <Button variant="destructive" onClick={confirmDelete} disabled={deletePreset.isPending}>
                     Eliminar

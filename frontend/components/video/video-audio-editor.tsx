@@ -1,5 +1,9 @@
 "use client";
 
+import { VideoEditorHeader } from "./video-editor-header";
+
+import { NumberInput } from "@/components/ui/number-input";
+
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +31,7 @@ const active = (task: AudioTask | null) =>
 function errorMessage(error: unknown) {
   return (
     (error as { response?: { data?: { error?: string } } }).response?.data
-      ?.error || "Não foi possível contactar o serviço de áudio."
+      ?.error || "Could not contact the audio service."
   );
 }
 
@@ -212,12 +216,12 @@ export function VideoAudioEditor({
             current.status === "failed"
               ? (typeof current.error === "string"
                   ? current.error
-                  : current.error?.message) || "A operação de áudio falhou."
+                  : current.error?.message) || "Audio processing failed."
               : null,
           );
           if (current.status === "completed")
             setNotice(
-              "Novo vídeo guardado no projeto. O áudio auxiliar foi eliminado do servidor.",
+              "New video saved in the project. The additional audio file has been removed from the server.",
             );
         }
       } catch (e) {
@@ -280,7 +284,7 @@ export function VideoAudioEditor({
     try {
       setTask(await cancelVideoAudioTask(userId, projectId, token, task.id));
       refreshSession.current({ userId, token });
-      setNotice("Tarefa cancelada.");
+      setNotice("Task canceled.");
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -314,39 +318,38 @@ export function VideoAudioEditor({
     (file && audioDuration !== null && (!short || params.shortPolicy));
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Gerir áudio do vídeo</h1>
+        <VideoEditorHeader
+          title="Manage video audio"
+          description="The video stream is copied without re-encoding. The original is preserved and the result is saved in the project."
+        />
         <div className="flex gap-2">
           {onTrim && (
             <Button variant="outline" onClick={onTrim}>
-              Recortar
+              Trim
             </Button>
           )}
           {onResize && (
             <Button variant="outline" onClick={onResize}>
-              Redimensionar
+              Resize
             </Button>
           )}
         </div>
       </div>
       {!initialFile || !userId || !projectId || !token ? (
-        <p>Abre um projeto de vídeo para gerir o áudio do original guardado.</p>
+        <p>Open a video project to edit the audio of the saved original.</p>
       ) : (
         <>
-          <p className="text-sm text-muted-foreground">
-            A imagem é copiada sem recodificação. O original mantém-se
-            inalterado e o resultado fica guardado no projeto.
-          </p>
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Vídeo de entrada</CardTitle>
+                <CardTitle>Input video</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div>
                   <Label htmlFor="audio-source">
-                    Escolher vídeo da biblioteca
+                    Choose a video from the library
                   </Label>
                   <select
                     id="audio-source"
@@ -360,7 +363,7 @@ export function VideoAudioEditor({
                       setNotice(null);
                     }}
                   >
-                    <option value="">Original do projeto</option>
+                    <option value="">Project original</option>
                     {results.map((result) => (
                       <option key={result.id} value={result.id}>
                         {result.name}
@@ -378,8 +381,8 @@ export function VideoAudioEditor({
                     {duration.toFixed(3)} s · {metadata.video.width} ×{" "}
                     {metadata.video.height} ·{" "}
                     {metadata.video.has_audio
-                      ? "Com áudio"
-                      : "Sem faixa de áudio"}
+                      ? "With audio"
+                      : "No audio track"}
                   </p>
                 )}
                 {metadata?.video.audioNotice && (
@@ -392,14 +395,14 @@ export function VideoAudioEditor({
                     variant="outline"
                     onClick={() => setReload((r) => r + 1)}
                   >
-                    Repetir leitura dos metadados
+                    Reload metadata
                   </Button>
                 )}
               </CardContent>
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Operação de áudio</CardTitle>
+                <CardTitle>Audio operation</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <fieldset
@@ -407,7 +410,7 @@ export function VideoAudioEditor({
                   className="space-y-4"
                 >
                   <div>
-                    <Label htmlFor="audio-operation">Operação</Label>
+                    <Label htmlFor="audio-operation">Operation</Label>
                     <select
                       id="audio-operation"
                       value={params.operation}
@@ -421,18 +424,18 @@ export function VideoAudioEditor({
                     >
                       {metadata?.video.has_audio && (
                         <>
-                          <option value="volume">Ajustar volume</option>
-                          <option value="remove">Remover áudio</option>
+                          <option value="volume">Adjust volume</option>
+                          <option value="remove">Remove audio</option>
                         </>
                       )}
-                      <option value="overlay">Sobrepor áudio</option>
+                      <option value="overlay">Overlay audio</option>
                     </select>
                   </div>
                   {params.operation === "overlay" && (
                     <>
                       <div>
                         <Label htmlFor="auxiliary-audio">
-                          Novo áudio (MP3, WAV, AAC ou OGG; máximo 20 MB)
+                          New audio (MP3, WAV, AAC or OGG; maximum 20 MB)
                         </Label>
                         <Input
                           id="auxiliary-audio"
@@ -444,7 +447,7 @@ export function VideoAudioEditor({
                             setAudioDuration(null);
                             if (selected && selected.size > 20_000_000) {
                               setFile(undefined);
-                              setError("O áudio excede 20 MB.");
+                              setError("The audio file exceeds 20 MB.");
                               return;
                             }
                             setFile(selected);
@@ -455,16 +458,16 @@ export function VideoAudioEditor({
                           <p className="mt-1 text-sm">
                             {file.name} ·{" "}
                             {inspecting
-                              ? "A validar…"
+                              ? "Validating…"
                               : audioDuration === null
-                                ? "Duração indisponível"
+                                ? "Duration unavailable"
                                 : `${audioDuration.toFixed(3)} s`}
                           </p>
                         )}
                       </div>
                       <div>
                         <Label htmlFor="audio-overlay-mode">
-                          Modo de sobreposição
+                          Overlay mode
                         </Label>
                         <select
                           id="audio-overlay-mode"
@@ -477,56 +480,55 @@ export function VideoAudioEditor({
                           className="w-full rounded border bg-background p-2"
                         >
                           <option value="replace">
-                            Substituir o áudio original
+                            Replace the original audio
                           </option>
                           {metadata?.video.has_audio && (
                             <option value="mix">
-                              Misturar com o áudio original
+                              Mix with the original audio
                             </option>
                           )}
                         </select>
                       </div>
                       <div>
                         <Label htmlFor="audio-start">
-                          Início do novo áudio no vídeo (segundos)
+                          New audio start time in the video (seconds)
                         </Label>
-                        <Input
+                        <NumberInput
                           id="audio-start"
-                          type="number"
+                          label="New audio start time"
                           min={0}
                           max={duration}
                           step={0.001}
                           value={params.startSeconds}
-                          onChange={(e) =>
-                            edit({ startSeconds: Number(e.target.value) })
+                          onValueChange={(value) =>
+                            edit({ startSeconds: value })
                           }
                         />
                       </div>
                       {params.overlayMode === "mix" && (
                         <div>
                           <Label htmlFor="original-volume">
-                            Volume do áudio original (%)
+                            Original audio volume (%)
                           </Label>
-                          <Input
+                          <NumberInput
                             id="original-volume"
-                            type="number"
+                            label="Original audio volume"
                             min={0}
                             max={300}
                             value={params.originalVolume}
-                            onChange={(e) =>
-                              edit({ originalVolume: Number(e.target.value) })
+                            onValueChange={(value) =>
+                              edit({ originalVolume: value })
                             }
                           />
                           <p className="text-sm text-muted-foreground">
-                            A mistura não normaliza automaticamente o volume e
-                            pode saturar.
+                            Mixing does not automatically normalize the volume and may cause clipping.
                           </p>
                         </div>
                       )}
                       {short && (
                         <div>
                           <Label htmlFor="audio-short-policy">
-                            O novo áudio termina antes do vídeo
+                            The new audio ends before the video
                           </Label>
                           <select
                             id="audio-short-policy"
@@ -539,14 +541,14 @@ export function VideoAudioEditor({
                             }
                             className="w-full rounded border bg-background p-2"
                           >
-                            <option value="">Escolhe o comportamento</option>
+                            <option value="">Choose what happens</option>
                             <option value="repeat">
-                              Repetir até ao fim do vídeo
+                              Repeat until the end of the video
                             </option>
                             <option value="silence">
                               {params.overlayMode === "mix"
-                                ? "Deixar terminar e manter só o original"
-                                : "Deixar terminar e ficar em silêncio"}
+                                ? "Let it end and keep only the original audio"
+                                : "Let it end and leave silence"}
                             </option>
                           </select>
                         </div>
@@ -558,32 +560,32 @@ export function VideoAudioEditor({
                       <div>
                         <Label htmlFor="audio-volume">
                           {params.operation === "overlay"
-                            ? "Volume do novo áudio (%)"
+                            ? "New audio volume (%)"
                             : "Volume (%)"}
                         </Label>
-                        <Input
+                        <NumberInput
                           id="audio-volume"
-                          type="number"
+                          label="volume"
                           min={0}
                           max={300}
                           value={params.volume}
-                          onChange={(e) =>
-                            edit({ volume: Number(e.target.value) })
+                          onValueChange={(value) =>
+                            edit({ volume: value })
                           }
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <Label htmlFor="audio-fade-in">Fade in (0–5 s)</Label>
-                          <Input
+                          <NumberInput
                             id="audio-fade-in"
-                            type="number"
+                            label="fade in"
                             min={0}
                             max={5}
                             step={0.1}
                             value={params.fadeIn}
-                            onChange={(e) =>
-                              edit({ fadeIn: Number(e.target.value) })
+                            onValueChange={(value) =>
+                              edit({ fadeIn: value })
                             }
                           />
                         </div>
@@ -591,23 +593,21 @@ export function VideoAudioEditor({
                           <Label htmlFor="audio-fade-out">
                             Fade out (0–5 s)
                           </Label>
-                          <Input
+                          <NumberInput
                             id="audio-fade-out"
-                            type="number"
+                            label="fade out"
                             min={0}
                             max={5}
                             step={0.1}
                             value={params.fadeOut}
-                            onChange={(e) =>
-                              edit({ fadeOut: Number(e.target.value) })
+                            onValueChange={(value) =>
+                              edit({ fadeOut: value })
                             }
                           />
                         </div>
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        Os fades aplicam-se uma vez ao áudio efetivo, depois da
-                        repetição ou corte. A soma não pode exceder a sua
-                        duração.
+                        Fades are applied once to the effective audio, after looping or trimming. Their combined length cannot exceed its duration.
                       </p>
                     </>
                   )}
@@ -618,7 +618,7 @@ export function VideoAudioEditor({
                     disabled={disabled}
                     onClick={() => edit({ operation: "remove" })}
                   >
-                    Remover a faixa em vez de silenciar
+                    Remove the track instead of muting it
                   </Button>
                 )}
                 {plan?.status === "confirmation_required" ? (
@@ -630,10 +630,10 @@ export function VideoAudioEditor({
                       disabled={disabled}
                       onClick={() => void submit(true)}
                     >
-                      Confirmar e processar
+                      Confirm and process
                     </Button>
                     <Button variant="ghost" onClick={() => setPlan(null)}>
-                      Voltar à configuração
+                      Back to settings
                     </Button>
                   </div>
                 ) : (
@@ -641,20 +641,20 @@ export function VideoAudioEditor({
                     disabled={disabled || !metadata || !overlayReady}
                     onClick={() => void submit()}
                   >
-                    {busy ? "A preparar…" : "Processar áudio"}
+                    {busy ? "Preparing…" : "Process audio"}
                   </Button>
                 )}
                 {task && (
                   <div className="space-y-2" aria-live="polite">
                     <p>
-                      Última tarefa:{" "}
+                      Latest task:{" "}
                       {
                         {
-                          queued: "Em fila",
-                          processing: "A processar",
-                          completed: "Concluído",
-                          failed: "Falhou",
-                          cancelled: "Cancelado",
+                          queued: "Queued",
+                          processing: "Processing",
+                          completed: "Completed",
+                          failed: "Failed",
+                          cancelled: "Canceled",
                         }[task.status]
                       }{" "}
                       · {task.progress}%
@@ -667,11 +667,10 @@ export function VideoAudioEditor({
                           disabled={busy}
                           onClick={() => void cancel()}
                         >
-                          Cancelar tarefa
+                          Cancel task
                         </Button>
                         <p className="text-sm text-muted-foreground">
-                          Podes sair e voltar mais tarde. A tarefa continua no
-                          servidor.
+                          You can leave and return later. The task will continue on the server.
                         </p>
                       </>
                     )}
@@ -682,7 +681,7 @@ export function VideoAudioEditor({
           </div>
           <Card>
             <CardHeader>
-              <CardTitle>Resultados guardados</CardTitle>
+              <CardTitle>Saved results</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {preview && (
@@ -692,7 +691,7 @@ export function VideoAudioEditor({
                   className="max-h-96 w-full rounded bg-black"
                 />
               )}
-              {!results.length && <p>Ainda não existem resultados.</p>}
+              {!results.length && <p>No results yet.</p>}
               {results.map((result) => (
                 <div
                   key={result.id}
@@ -704,13 +703,13 @@ export function VideoAudioEditor({
                       variant="outline"
                       onClick={() => void openResult(result, false)}
                     >
-                      Visualizar
+                      Preview
                     </Button>
                     <Button
                       variant="outline"
                       onClick={() => void openResult(result, true)}
                     >
-                      Descarregar
+                      Download
                     </Button>
                   </div>
                 </div>

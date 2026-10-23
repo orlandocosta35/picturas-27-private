@@ -78,16 +78,16 @@ export function ShareProjectDialog({ projectId, projectVersion }: Props) {
     if (hasUnsavedChanges) {
       toast({
         variant: "destructive",
-        title: "Alterações não guardadas",
+        title: "Unsaved changes",
         description:
-          "Ainda tens alterações por guardar neste projeto. Guarda antes de criar um link de partilha, para garantir que quem recebe o link vê a versão correta.",
+          "This project has unsaved changes. Save before creating a share link so that recipients see the correct version.",
       });
       return;
     }
 
     const v = getLatestVersion();
       if (!Number.isFinite(v)) {
-        toast({ variant: "destructive", title: "Erro", description: "Versão do projeto indisponível. Recarrega a página." });
+        toast({ variant: "destructive", title: "Error", description: "Project version unavailable. Reload the page." });
         return;
       }
 

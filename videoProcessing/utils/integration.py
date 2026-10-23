@@ -34,10 +34,10 @@ def register_video_service(app, task_root, service_type, blueprint_factory, oper
             except (ValueError, OSError):
                 details = {}
             raise VideoError(details.get('code', 'INTEGRATION_FAILED'),
-                            details.get('error', 'Não foi possível guardar o resultado ou atualizar a quota.'),
+                            details.get('error', 'Could not save the result or update the quota.'),
                             error.code) from None
         except (URLError, TimeoutError, OSError):
-            raise VideoError('INTEGRATION_UNAVAILABLE', 'Serviço de projetos ou quota indisponível.', 503) from None
+            raise VideoError('INTEGRATION_UNAVAILABLE', 'Project or quota service unavailable.', 503) from None
 
     def quota(ctx, task, action):
         return call(f'{users}/internal/video-quota/{ctx.user_id}/{task["id"]}/{action}',
@@ -85,7 +85,7 @@ def register_video_service(app, task_root, service_type, blueprint_factory, oper
                 raise ValueError
             return VideoContext(claims['user_id'], claims['profile'], claims['project_id'])
         except (ValueError, KeyError, TypeError, AttributeError):
-            raise VideoError('AUTHENTICATION_REQUIRED', 'Credenciais de vídeo inválidas ou expiradas.', 401) from None
+            raise VideoError('AUTHENTICATION_REQUIRED', 'Invalid or expired video credentials.', 401) from None
 
     service = service_type(task_root, VideoHooks(accept, complete, abort))
     app.register_blueprint(blueprint_factory(service, context))

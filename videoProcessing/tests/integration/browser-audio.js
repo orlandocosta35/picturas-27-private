@@ -77,40 +77,40 @@ async function main() {
     );
   }
   const downloads =
-    "Array.from(document.querySelectorAll('button')).filter(b=>b.textContent.trim()==='Descarregar').length";
+    "Array.from(document.querySelectorAll('button')).filter(b=>b.textContent.trim()==='Download').length";
   await call("Page.navigate", { url: "http://127.0.0.1:19080/uc3-test" });
-  await click("Gerir áudio");
+  await click("Manage audio");
   await wait(
     "document.querySelector('#audio-operation')?.value==='volume'",
     "Audio editor",
   );
   await wait(
-    `${button("Processar áudio")} && !${button("Processar áudio")}.disabled`,
+    `${button("Process audio")} && !${button("Process audio")}.disabled`,
     "Audio metadata",
   );
   console.log("PASS Browser opens audio from the existing video editor");
   await fill("audio-volume", "150");
-  await click("Processar áudio");
+  await click("Process audio");
   await wait(
-    "document.body.innerText.includes('pode saturar e distorcer')",
+    "document.body.innerText.includes('may cause clipping and distort')",
     "Amplification warning",
   );
   assert.equal(await evaluate(downloads), 0);
   console.log(
     "PASS Browser asks for amplification confirmation without creating a result",
   );
-  await click("Voltar à configuração");
+  await click("Back to settings");
   await fill("audio-volume", "50");
-  await click("Processar áudio");
+  await click("Process audio");
   await wait(`${downloads}===1`, "Volume result");
   console.log("PASS Browser volume operation completes and updates library");
   await choose("audio-operation", "remove");
-  await click("Processar áudio");
+  await click("Process audio");
   await wait(
-    "document.body.innerText.includes('sem faixa de áudio')",
+    "document.body.innerText.includes('no audio track')",
     "Removal confirmation",
   );
-  await click("Confirmar e processar");
+  await click("Confirm and process");
   await wait(`${downloads}===2`, "Removal result");
   console.log("PASS Browser confirms removal and saves a second result");
   const removedId = await evaluate(
@@ -149,21 +149,21 @@ async function main() {
     "!!document.querySelector('#audio-short-policy')",
     "Short policy shown",
   );
-  assert.equal(await evaluate(`${button("Processar áudio")}.disabled`), true);
+  assert.equal(await evaluate(`${button("Process audio")}.disabled`), true);
   await choose("audio-short-policy", "repeat");
   await fill("audio-volume", "100");
   await fill("audio-fade-in", "0.5");
   await fill("audio-fade-out", "0.5");
-  await click("Processar áudio");
+  await click("Process audio");
   await wait(`${downloads}===3`, "Overlay result");
   console.log(
     "PASS Browser validates upload, requires short-audio policy and overlays with fades",
   );
-  await click("Visualizar");
+  await click("Preview");
   await wait("document.querySelectorAll('video').length===2", "Result preview");
   console.log("PASS Browser previews the saved result");
-  await click("Recortar");
-  await click("Gerir áudio");
+  await click("Trim");
+  await click("Manage audio");
   await wait(`${downloads}===3`, "Recovered audio results");
   console.log("PASS Browser recovers audio tasks and library after navigation");
   const shot = await call("Page.captureScreenshot", {

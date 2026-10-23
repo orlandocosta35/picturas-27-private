@@ -1,3 +1,4 @@
+import { NumberInput } from "@/components/ui/number-input";
 import { ToolbarButton } from "./toolbar-button";
 import { Crop } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -87,12 +88,12 @@ export default function CropTool({ disabled }: { disabled: boolean }) {
         <div className="flex w-full justify-between items-center text-sm text-gray-500">
           <Label htmlFor="left">Left</Label>
           <div className="flex items-center space-x-2 w-1/2">
-            <Input
+            <NumberInput
               id="left"
-              type="number"
+              label="Left"
               value={left}
-              onChange={(e) => {
-                handleSet({ l: Number(e.target.value) });
+              onValueChange={(value) => {
+                handleSet({ l: value });
                 setHasUnsavedChanges(true);
               }}
             />
@@ -102,12 +103,12 @@ export default function CropTool({ disabled }: { disabled: boolean }) {
         <div className="flex w-full justify-between items-center text-sm text-gray-500">
           <Label htmlFor="top">Top</Label>
           <div className="flex items-center space-x-2 w-1/2">
-            <Input
+            <NumberInput
               id="top"
-              type="number"
+              label="Top"
               value={top}
-              onChange={(e) => {
-                handleSet({ t: Number(e.target.value) });
+              onValueChange={(value) => {
+                handleSet({ t: value });
                 setHasUnsavedChanges(true);
               }}
             />
@@ -117,12 +118,12 @@ export default function CropTool({ disabled }: { disabled: boolean }) {
         <div className="flex w-full justify-between items-center text-sm text-gray-500">
           <Label htmlFor="right">Right</Label>
           <div className="flex items-center space-x-2 w-1/2">
-            <Input
+            <NumberInput
               id="right"
-              type="number"
+              label="Right"
               value={right}
-              onChange={(e) => {
-                handleSet({ r: Number(e.target.value) });
+              onValueChange={(value) => {
+                handleSet({ r: value });
                 setHasUnsavedChanges(true);
               }}
             />
@@ -132,12 +133,12 @@ export default function CropTool({ disabled }: { disabled: boolean }) {
         <div className="flex w-full justify-between items-center text-sm text-gray-500">
           <Label htmlFor="bottom">Bottom</Label>
           <div className="flex items-center space-x-2 w-1/2">
-            <Input
+            <NumberInput
               id="bottom"
-              type="number"
+              label="Bottom"
               value={bottom}
-              onChange={(e) => {
-                handleSet({ b: Number(e.target.value) });
+              onValueChange={(value) => {
+                handleSet({ b: value });
                 setHasUnsavedChanges(true);
               }}
             />

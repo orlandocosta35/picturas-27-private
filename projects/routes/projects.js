@@ -1931,10 +1931,10 @@ router.delete(
         const tool = project.tools.find((i) => String(i._id) === String(req.params.tool));
         if (!tool) return res.status(404).jsonp("Tool not found");
 
-        // Guardar token atual (antes do undo) para sabermos o que apagar
+        // Save token atual (antes do undo) para sabermos o que apagar
         const oldTok = project.committedToken ?? 0;
 
-        // Remover tool do array
+        // Remove tool do array
         project.tools.remove(tool);
 
         // Recalcular positions
@@ -2136,7 +2136,7 @@ router.post(
   }
 );
 
-// Cancelar processamento de um projeto
+// Cancel processing de um projeto
 router.delete(
   "/:user/:project/process",
   checkSharePermission,
@@ -2274,11 +2274,11 @@ function buildSuggestions(message, currentTools, features) {
 
   const S = [];
 
-  // 1) Preto & Branco
+  // 1) Black & White
   if (has("preto", "branco", "pb", "p&b", "black and white", "monocrom")) {
     S.push({
-      name: "Preto & Branco",
-      description: "Remove cor e aumenta contraste para um look clássico (ajustado à imagem).",
+      name: "Black & White",
+      description: "Removes color and increases contrast for a classic look, adjusted to the image.",
       tools: [
         { procedure: "saturation", params: { saturationFactor: 0 } },
         { procedure: "contrast", params: { contrastFactor: clamp(boostContrast, 1.10, 1.35) } },
@@ -2290,8 +2290,8 @@ function buildSuggestions(message, currentTools, features) {
   // 2) Vintage
   if (has("vintage", "retro", "filme", "analog", "nostalg")) {
     S.push({
-      name: "Vintage Suave",
-      description: "Contraste suave, leve dessaturação e brilho calibrado ao estado atual.",
+      name: "Soft Vintage",
+      description: "Soft contrast, slight desaturation and brightness adjusted to the image.",
       tools: [
         { procedure: "contrast", params: { contrastFactor: clamp(boostContrast - 0.06, 1.06, 1.20) } },
         { procedure: "saturation", params: { saturationFactor: 0.88 } },
@@ -2301,10 +2301,10 @@ function buildSuggestions(message, currentTools, features) {
   }
 
   // 3) Pop / Mais cor
-  if (has("pop", "mais cor", "vibrante", "satur", "vivo")) {
+  if (has("pop", "more color", "more colour", "vibrant", "vivid", "mais cor", "vibrante", "satur", "vivo")) {
     S.push({
-      name: "Pop (Mais cor)",
-      description: "Aumenta saturação e contraste sem rebentar highlights (ajustado à imagem).",
+      name: "Pop (More Color)",
+      description: "Increases saturation and contrast without clipping highlights, adjusted to the image.",
       tools: [
         { procedure: "saturation", params: { saturationFactor: mean > 170 ? 1.35 : 1.45 } },
         { procedure: "contrast", params: { contrastFactor: clamp(boostContrast, 1.10, 1.25) } },
@@ -2314,18 +2314,18 @@ function buildSuggestions(message, currentTools, features) {
   }
 
   // 4) Mais claro / Mais escuro
-  if (has("mais claro", "clarear", "brilho", "mais luz")) {
+  if (has("brighter", "brighten", "brightness", "more light", "mais claro", "clarear", "brilho", "mais luz")) {
     S.push({
-      name: "Iluminar",
-      description: `Aumenta o brilho (calibrado: brilho médio ~${Math.round(mean)}).`,
+      name: "Brighten",
+      description: `Increases brightness (adjusted to average brightness ~${Math.round(mean)}).`,
       tools: [{ procedure: "brightness", params: { brightness: brighten } }],
     });
   }
 
-  if (has("mais escuro", "escurecer", "menos luz")) {
+  if (has("darker", "darken", "less light", "mais escuro", "escurecer", "menos luz")) {
     S.push({
-      name: "Escurecer",
-      description: `Reduz o brilho (calibrado: brilho médio ~${Math.round(mean)}).`,
+      name: "Darken",
+      description: `Reduces brightness (adjusted to average brightness ~${Math.round(mean)}).`,
       tools: [{ procedure: "brightness", params: { brightness: darken } }],
     });
   }
@@ -2334,18 +2334,18 @@ function buildSuggestions(message, currentTools, features) {
   if (S.length === 0) {
     S.push(
       {
-        name: "Contraste Suave",
-        description: "Leve aumento de contraste (ajustado à imagem).",
+        name: "Soft Contrast",
+        description: "Slightly increases contrast, adjusted to the image.",
         tools: [{ procedure: "contrast", params: { contrastFactor: clamp(boostContrast - 0.08, 1.06, 1.18) } }],
       },
       {
         name: "Realce de cor",
-        description: "Aumenta ligeiramente a saturação.",
+        description: "Slightly increases saturation.",
         tools: [{ procedure: "saturation", params: { saturationFactor: mean > 170 ? 1.12 : 1.18 } }],
       },
       {
-        name: "Luz & Cor",
-        description: "Equilíbrio entre brilho, contraste e cor (ajustado à imagem).",
+        name: "Luz & Color",
+        description: "Balances brightness, contrast and color, adjusted to the image.",
         tools: [
           { procedure: "brightness", params: { brightness: mean < 110 ? 1.10 : 1.06 } },
           { procedure: "contrast", params: { contrastFactor: clamp(boostContrast - 0.10, 1.06, 1.16) } },

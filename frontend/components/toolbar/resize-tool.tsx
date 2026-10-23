@@ -1,3 +1,4 @@
+import { NumberInput } from "@/components/ui/number-input";
 import { ToolbarButton } from "./toolbar-button";
 import { Scaling } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -75,12 +76,12 @@ export default function ResizeTool({ disabled }: { disabled: boolean }) {
         <div className="flex w-full justify-between items-center text-sm text-gray-500">
           <Label htmlFor="width">Width</Label>
           <div className="flex items-center space-x-2 w-1/2">
-            <Input
+            <NumberInput
               id="width"
-              type="number"
+              label="Width"
               value={width}
-              onChange={(e) => {
-                handleSet({ w: Number(e.target.value) });
+              onValueChange={(value) => {
+                handleSet({ w: value });
                 setHasUnsavedChanges(true);
               }}
               />
@@ -90,12 +91,12 @@ export default function ResizeTool({ disabled }: { disabled: boolean }) {
         <div className="flex w-full justify-between items-center text-sm text-gray-500">
           <Label htmlFor="height">Height</Label>
           <div className="flex items-center space-x-2 w-1/2">
-            <Input
+            <NumberInput
               id="height"
-              type="number"
+              label="Height"
               value={height}
-              onChange={(e) => {
-                handleSet({ h: Number(e.target.value) });
+              onValueChange={(value) => {
+                handleSet({ h: value });
                 setHasUnsavedChanges(true);
               }} 
           />

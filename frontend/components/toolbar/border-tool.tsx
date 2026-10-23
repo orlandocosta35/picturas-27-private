@@ -1,3 +1,4 @@
+import { NumberInput } from "@/components/ui/number-input";
 import { ToolbarButton } from "./toolbar-button";
 import { Frame } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -67,11 +68,11 @@ export default function BorderTool({ disabled }: { disabled: boolean }) {
         <div className="flex w-full justify-between items-center text-sm text-gray-500">
           <Label htmlFor="width">Width</Label>
           <div className="flex items-center space-x-2 w-1/2">
-            <Input
+            <NumberInput
               id="width"
-              type="number"
+              label="Width"
               value={width}
-              onChange={(e) => handleWidthChange(Number(e.target.value))}
+              onValueChange={(value) => handleWidthChange(value)}
             />
             <span>px</span>
           </div>

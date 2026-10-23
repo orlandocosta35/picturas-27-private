@@ -27,7 +27,7 @@ def register_concat(app, task_root):
                          context=tls, timeout=15) as response:
                 items = json.load(response)
         except (HTTPError, URLError, TimeoutError, OSError, ValueError):
-            raise VideoError('INTEGRATION_UNAVAILABLE', 'Serviço de projetos indisponível.', 503) from None
+            raise VideoError('INTEGRATION_UNAVAILABLE', 'Project service unavailable.', 503) from None
 
         def with_metadata(item):
             try:

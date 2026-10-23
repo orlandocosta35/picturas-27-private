@@ -21,13 +21,13 @@ export default function Page() {
   return context && file ? (
     <main className="p-6">
       <button onClick={() => setVisible((v) => !v)}>
-        {visible ? "Sair do editor" : "Voltar ao editor"}
+        {visible ? "Leave editor" : "Back to editor"}
       </button>
       {visible && (
         <VideoTrimEditor initialFile={file} {...context} onResize={() => {}} />
       )}
     </main>
   ) : (
-    <p>A carregar...</p>
+    <p>Loading...</p>
   );
 }

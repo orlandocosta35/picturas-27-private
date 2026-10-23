@@ -13,11 +13,11 @@ def probe_json(path, args, timeout=60):
         )
         return json.loads(result.stdout)
     except FileNotFoundError:
-        raise VideoError("FFPROBE_UNAVAILABLE", "FFprobe não está disponível.", 503) from None
+        raise VideoError("FFPROBE_UNAVAILABLE", "FFprobe is unavailable.", 503) from None
     except subprocess.TimeoutExpired:
-        raise VideoError("PROBE_TIMEOUT", "A análise do vídeo excedeu o tempo permitido.", 422) from None
+        raise VideoError("PROBE_TIMEOUT", "Video inspection timed out.", 422) from None
     except (subprocess.CalledProcessError, ValueError):
-        raise VideoError("UNREADABLE_VIDEO", "Não foi possível ler este vídeo.", 422) from None
+        raise VideoError("UNREADABLE_VIDEO", "Could not read this video.", 422) from None
 
 
 def probe_video(path, timeout=60):
@@ -28,7 +28,7 @@ def probe_video(path, timeout=60):
               and not s.get("disposition", {}).get("attached_pic")]
     fmt = data.get("format", {})
     if not videos:
-        raise VideoError("UNREADABLE_VIDEO", "Não foi possível ler este vídeo.", 422)
+        raise VideoError("UNREADABLE_VIDEO", "Could not read this video.", 422)
     video = videos[0]
     formats = set(fmt.get("format_name", "").split(","))
     if "mp4" in formats or "mov" in formats:
@@ -38,11 +38,11 @@ def probe_video(path, timeout=60):
         container = "webm"
         with open(path, "rb") as source:
             if b"webm" not in source.read(4096):
-                raise VideoError("UNSUPPORTED_FORMAT", "O formato deste vídeo não é suportado.", 415)
+                raise VideoError("UNSUPPORTED_FORMAT", "This video format is not supported.", 415)
     else:
-        raise VideoError("UNSUPPORTED_FORMAT", "O formato deste vídeo não é suportado.", 415)
+        raise VideoError("UNSUPPORTED_FORMAT", "This video format is not supported.", 415)
     try:
-        duration = finite_number(video.get("duration", fmt.get("duration")), "A duração")
+        duration = finite_number(video.get("duration", fmt.get("duration")), "Duration")
         fps = Fraction(video.get("avg_frame_rate", "0/1"))
         if fps <= 0:
             fps = Fraction(video.get("r_frame_rate", "0/1"))
@@ -51,7 +51,7 @@ def probe_video(path, timeout=60):
         if duration <= 0 or fps <= 0 or width <= 0 or height <= 0 or not math.isfinite(start_time):
             raise ValueError
     except (KeyError, ValueError, ZeroDivisionError, VideoError):
-        raise VideoError("UNREADABLE_VIDEO", "Não foi possível ler este vídeo.", 422) from None
+        raise VideoError("UNREADABLE_VIDEO", "Could not read this video.", 422) from None
     return VideoInfo(duration, width, height, fps, container,
                      any(s.get("codec_type") == "audio" for s in streams), start_time)
 
@@ -76,6 +76,6 @@ def audio_notice(chosen, ignored):
     if not ignored:
         return None
     if chosen is None:
-        return "O áudio deste vídeo não pode ser lido; o resultado fica sem áudio."
-    return (f"O vídeo tem {ignored + 1} faixas de áudio. É usada só a primeira legível "
-            f"({chosen.get('codec_name')}); as outras são ignoradas.")
+        return "The audio in this video cannot be read; the result will have no audio."
+    return (f"The video has {ignored + 1} audio tracks. Only the first readable track is used "
+            f"({chosen.get('codec_name')}); the remaining tracks are ignored.")

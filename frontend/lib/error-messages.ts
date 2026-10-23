@@ -34,9 +34,9 @@ export function getErrorMessage(
   // 1) Erros de rede (sem resposta)
   if (axios.isAxiosError(error) && !error.response) {
     return {
-      title: "Sem ligação à internet",
+      title: "Connection unavailable",
       description:
-        "Não foi possível comunicar com o servidor. Verifica a tua ligação e tenta novamente.",
+        "Could not contact the server. Check your connection and try again.",
     };
   }
 
@@ -49,9 +49,9 @@ export function getErrorMessage(
   // Exemplos de códigos / mensagens do backend que já vi no código
   if (backendMsg === "No more daily_operations available") {
     return {
-      title: "Limite diário atingido",
+      title: "Daily limit reached",
       description:
-        "Atingiste o limite diário de operações avançadas. Volta a tentar amanhã ou faz upgrade para Premium.",
+        "You have reached your daily limit for advanced operations. Try again tomorrow or upgrade to Premium.",
     };
   }
 
@@ -62,130 +62,130 @@ export function getErrorMessage(
   switch (context) {
     case "auth-login":
       return {
-        title: "Erro no login",
+        title: "Sign-in failed",
         description:
           backendMsg ??
-          "Não foi possível iniciar sessão. Verifica as credenciais e tenta novamente.",
+          "Could not sign in. Check your credentials and try again.",
       };
 
     case "auth-register":
       return {
-        title: "Erro no registo",
+        title: "Registration failed",
         description:
           backendMsg ??
-          "Não foi possível concluir o registo. Verifica os dados inseridos e tenta novamente.",
+          "Could not complete registration. Check your details and try again.",
       };
 
     case "project-create":
       return {
-        title: "Erro ao criar projeto",
+        title: "Could not create project",
         description:
           backendMsg ??
-          "Ocorreu um problema ao criar o projeto. Verifica a tua ligação e tenta novamente.",
+          "Could not create the project. Check your connection and try again.",
       };
 
     case "project-upload":
       return {
-        title: "Erro ao carregar imagens",
+        title: "Could not upload images",
         description:
           backendMsg ??
-          "As imagens não foram carregadas. Confirma o formato e o tamanho dos ficheiros e tenta novamente.",
+          "Images were not uploaded. Check the file formats and sizes and try again.",
       };
 
     case "project-download":
       return {
-        title: "Erro no download",
+        title: "Download failed",
         description:
           backendMsg ??
-          "Não foi possível fazer o download do projeto. Tenta novamente mais tarde.",
+          "Could not download the project. Please try again later.",
       };
 
     case "project-process":
       return {
-        title: "Falha no processamento",
+        title: "Processing failed",
         description:
           backendMsg ??
-          "Ocorreu um erro ao processar o projeto. Tenta novamente. Se o problema persistir, verifica a tua ligação ou volta a tentar mais tarde.",
+          "Project processing failed. Please try again. If the problem persists, check your connection or try again later.",
       };
 
     case "project-cancel-process":
       return {
-        title: "Não foi possível cancelar o processamento",
+        title: "Could not cancel processing",
         description:
           backendMsg ??
-          "O cancelamento do processamento falhou. Verifica a tua ligação e tenta novamente.",
+          "Could not cancel processing. Check your connection and try again.",
       };
 
     case "account-profile":
       return {
-        title: "Erro ao atualizar perfil",
+        title: "Could not update profile",
         description:
           backendMsg ??
-          "Não foi possível atualizar os dados do perfil. Verifica a informação inserida e tenta novamente.",
+          "Could not update your profile. Check your details and try again.",
       };
 
     case "account-password":
       return {
-        title: "Erro ao atualizar password",
+        title: "Could not update password",
         description:
           backendMsg ??
-          "Não foi possível atualizar a password. Confirma a password atual e tenta novamente.",
+          "Could not update your password. Check your current password and try again.",
       };
 
 
     case "upgrade":
       return {
-        title: "Erro ao atualizar o plano",
+        title: "Could not update plan",
         description:
           backendMsg ??
-          "Ocorreu um erro ao alterar o plano de subscrição. Tenta novamente.",
+          "Could not change your subscription plan. Please try again.",
       };
     
     case "billing":
       return {
-        title: "Erro na faturação",
+        title: "Billing error",
         description:
           backendMsg ??
-          "Ocorreu um erro ao gerir a tua subscrição ou método de pagamento. Verifica os dados e tenta novamente.",
+          "Could not update your subscription or payment method. Check your details and try again.",
       };
 
     case "ai":
       return {
-        title: "Falha na IA",
+        title: "AI processing failed",
         description:
           backendMsg ??
-          "Não foi possível gerar sugestões da IA. Tenta novamente. Se o problema continuar, verifica a tua ligação à internet.",
+          "Could not generate AI suggestions. Please try again. If the problem persists, check your connection.",
       };
 
     case "project-load":
       return {
-        title: "Erro ao carregar projeto",
+        title: "Could not load project",
         description:
           backendMsg ??
-          "Não foi possível carregar o projeto. Verifica a tua ligação e tenta novamente.",
+          "Could not load the project. Check your connection and try again.",
       };
 
     case "assistant-suggest":
       return {
-        title: "Falha no processamento",
-        description: "Falha no processamento. Tente novamente.",
+        title: "Processing failed",
+        description: "Processing failed. Please try again.",
 
       };
 
     case "project-reorder":
       return {
-        title: "Erro ao aplicar sugestão",
+        title: "Could not apply suggestion",
         description:
           backendMsg ??
-          "Não foi possível atualizar a sequência de ferramentas. Tenta novamente.",
+          "Could not update the tool sequence. Please try again.",
       };
 
     default:
       return {
-        title: "Ocorreu um erro",
+        title: "An error occurred",
         description:
           backendMsg ??
-          "Algo correu mal. Tenta novamente ou volta a tentar mais tarde.",
+          "Something went wrong. Please try again now or later.",
       };
   }
 }
@@ -201,33 +201,33 @@ export function getAiErrorMessage(
       case 1100: // bg_remove_ai wrong_procedure
       case 1101: // bg_remove_ai error_processing
         return {
-          title: "Erro na remoção de fundo",
+          title: "Background removal failed",
           description:
-            "Não foi possível remover o fundo desta imagem. Tenta novamente ou experimenta outra imagem.",
+            "Could not remove the image background. Try again or choose another image.",
         };
 
       case 1800: // upgrade_ai wrong_procedure
       case 1801: // upgrade_ai error_processing
         return {
-          title: "Erro na melhoria da imagem",
+          title: "Image enhancement failed",
           description:
-            "Não foi possível melhorar esta imagem. Verifica o formato/tamanho e tenta novamente.",
+            "Could not enhance the image. Check its format and size and try again.",
         };
 
       case 2000: // cut_ai wrong_procedure
       case 2001: // cut_ai error_processing
         return {
-          title: "Erro no corte inteligente",
+          title: "Smart crop failed",
           description:
-            "Não foi possível calcular o corte inteligente para esta imagem. Tenta novamente ou ajusta a imagem original.",
+            "Could not calculate a smart crop. Try again or adjust the original image.",
         };
 
       case 2100: // obj_ai wrong_procedure
       case 2101: // obj_ai error_processing
         return {
-          title: "Erro na deteção de objetos",
+          title: "Object detection failed",
           description:
-            "Não foi possível detetar objetos na imagem. Tenta novamente ou usa outra imagem com mais contraste.",
+            "Could not detect objects. Try again or use an image with more contrast.",
         };
 
       // Se tiveres códigos extra dos outros serviços (people_ai, text_ai), vais só acrescentando aqui.
@@ -236,9 +236,9 @@ export function getAiErrorMessage(
 
   // fallback genérico
   return {
-    title: "Falha na IA",
+    title: "AI processing failed",
     description:
       backendMsg ??
-      "Não foi possível aplicar a ferramenta de IA. Tenta novamente. Se o problema continuar, verifica a tua ligação à internet ou volta a tentar mais tarde.",
+      "Could not apply the AI tool. Please try again. If the problem persists, check your connection or try again later.",
   };
 }

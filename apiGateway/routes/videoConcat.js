@@ -43,11 +43,11 @@ router.post("/:user/:project/video/concat", auth.checkToken, async (req, res) =>
     const headers = await context(req, AUDIENCE);
     const ids = req.body?.videos;
     if (!Array.isArray(ids) || ids.length < 2)
-      throw invalid("Selecione pelo menos dois vídeos para concatenar.");
+      throw invalid("Select at least two videos to join.");
     if (ids.length > MAX_INPUTS)
-      throw invalid(`É possível concatenar no máximo ${MAX_INPUTS} vídeos.`);
+      throw invalid(`You can join at most ${MAX_INPUTS} videos.`);
     if (!ids.every((id) => typeof id === "string" && /^[a-f0-9]{24}$/i.test(id)))
-      throw invalid("Identificador de vídeo inválido.");
+      throw invalid("Invalid video ID.");
 
     // The destination must be one of the caller's video projects; checking now
     // avoids processing a result that could not be published afterwards.
@@ -69,7 +69,7 @@ router.post("/:user/:project/video/concat", auth.checkToken, async (req, res) =>
         });
       } catch (e) {
         if (e.response?.status === 404)
-          throw invalid(`O vídeo ${index + 1} não foi encontrado na sua biblioteca.`, 404);
+          throw invalid(`Video ${index + 1} was not found in your library.`, 404);
         throw e;
       }
       sources.push(source);

@@ -1,6 +1,8 @@
 # Processamento de vídeo
 
-O `server.py` mantém as rotas de redimensionamento (UC1) e regista os módulos de corte (UC2) e gestão de áudio (UC3). O `use_cases/trim.py` contém a lógica de corte e o `use_cases/audio.py` contém a lógica de áudio. Ambos usam o pacote `utils`: `common.py` reúne tipos e limites, `media.py` analisa os ficheiros, `tasks.py` gere o ciclo das tarefas e `integration.py` autentica os pedidos internos e liga quota e resultados aos serviços `users` e `projects`. Os ficheiros `use_cases/trim_integration.py` e `use_cases/audio_integration.py` registam cada operação.
+O `server.py` configura a aplicação Flask e regista os casos de uso. Os módulos em `use_cases/` contêm redimensionamento (`resize.py`, UC1), corte (`trim.py`, UC2), áudio (`audio.py`, UC3) e concatenação (`concat.py`, UC5). Cada operação tem um ficheiro `*_integration.py` para o registo e arranque. O pacote `utils` reúne tipos e limites (`common.py`), análise de ficheiros (`media.py`), ciclo de tarefas partilhado (`tasks.py`) e autenticação e integração com quota/biblioteca (`integration.py`).
+
+O UC1 conserva o seu ciclo de tarefas, recuperação e limpeza em `use_cases/resize.py`. As suas tarefas continuam diretamente na raiz de `VIDEO_TASK_ROOT`, preservando tarefas e resultados existentes. As rotas `/video/resize` e `/video/tasks/<task_id>` mantêm-se iguais.
 
 ## Arranque
 

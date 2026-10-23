@@ -16,7 +16,7 @@ const pctToFactor = (v) => 1 + (v / 100);
 const DEFAULT_PRESETS = [
   {
     id: "default-vintage",
-    name: "Vintage Suave",
+    name: "Soft Vintage",
     tools: [
       { procedure: "contrast", params: { contrastFactor: pctToFactor(-8) } },
       { procedure: "saturation", params: { saturationFactor: pctToFactor(-10) } },
@@ -26,7 +26,7 @@ const DEFAULT_PRESETS = [
   },
   {
     id: "default-pop",
-    name: "Pop (Mais cor)",
+    name: "Pop (More Color)",
     tools: [
       { procedure: "contrast", params: { contrastFactor: pctToFactor(12) } },
       { procedure: "saturation", params: { saturationFactor: pctToFactor(14) } },
@@ -35,7 +35,7 @@ const DEFAULT_PRESETS = [
   },
   {
     id: "default-bw",
-    name: "Preto & Branco",
+    name: "Black & White",
     tools: [
       { procedure: "binarization", params: { threshold: 128 } },
       { procedure: "contrast", params: { contrastFactor: pctToFactor(8) } },

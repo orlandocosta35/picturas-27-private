@@ -10,10 +10,10 @@ const OPERATIONS: Array<{
   label: string;
   icon: typeof Film;
 }> = [
-  { value: "trim", label: "Recortar", icon: Scissors },
-  { value: "resize", label: "Redimensionar", icon: Film },
-  { value: "audio", label: "Gerir áudio", icon: Volume2 },
-  { value: "concat", label: "Concatenar", icon: Layers },
+  { value: "trim", label: "Trim", icon: Scissors },
+  { value: "resize", label: "Resize", icon: Film },
+  { value: "audio", label: "Manage audio", icon: Volume2 },
+  { value: "concat", label: "Join", icon: Layers },
 ];
 
 // One navigation for every video operation, shown above whichever screen is open.
@@ -27,7 +27,7 @@ export function VideoOperationTabs({
   return (
     <div
       role="tablist"
-      aria-label="Operação de vídeo"
+      aria-label="Video operation"
       className="mx-auto grid w-full max-w-6xl grid-cols-2 gap-2 sm:grid-cols-4"
     >
       {OPERATIONS.map(({ value: operation, label, icon: Icon }) => (

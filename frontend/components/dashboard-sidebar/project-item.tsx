@@ -163,8 +163,8 @@ export default function ProjectItem({ p }: { p: Project }) {
                   // Mutation failures are reported by the existing effect.
                   if (!mutationStarted) {
                     toast({
-                      title: "Não foi possível concluir a operação",
-                      description: "Verifica a ligação e tenta novamente.",
+                      title: "Could not complete the operation",
+                      description: "Check your connection and try again.",
                       variant: "destructive",
                     });
                   }
@@ -174,7 +174,7 @@ export default function ProjectItem({ p }: { p: Project }) {
               }}
               variant={option === "rename" ? "default" : "destructive"}
             >
-              {submitting ? "A aguardar…" : option === "rename" ? "Save" : "Permanently Delete"}
+              {submitting ? "Please wait…" : option === "rename" ? "Save" : "Permanently Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

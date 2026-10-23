@@ -1,7 +1,7 @@
 set -eu
 mkdir -p /tmp/frontend
 tar -C /source/frontend --exclude=node_modules --exclude=.next -cf - . | tar -C /tmp/frontend -xf -
-ln -s /usr/src/app/node_modules /tmp/frontend/node_modules
+ln -sfn /usr/src/app/node_modules /tmp/frontend/node_modules
 mkdir -p /tmp/frontend/app/uc2-test
 cp /source/videoProcessing/tests/integration/ui-page.tsx /tmp/frontend/app/uc2-test/page.tsx
 cp /validation/ui-context.json /tmp/frontend/public/context.json
@@ -15,7 +15,7 @@ cat > /tmp/frontend/app/layout.tsx <<'LAYOUT'
 import "./globals.css";
 import ReactQueryProvider from "@/components/query-client";
 export default function Layout({children}:{children:React.ReactNode}){
- return <html lang="pt"><body><ReactQueryProvider>{children}</ReactQueryProvider></body></html>;
+ return <html lang="en"><body><ReactQueryProvider>{children}</ReactQueryProvider></body></html>;
 }
 LAYOUT
 cat > /tmp/frontend/next.config.ts <<'CONFIG'

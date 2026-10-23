@@ -30,7 +30,7 @@ class VideoTaskService:
         if not self.namespace:
             raise ValueError("A task namespace is required")
         if not isinstance(hooks, VideoHooks) or not all(callable(x) for x in (hooks.accept, hooks.complete, hooks.abort)):
-            raise ValueError("VideoHooks com accept, complete e abort são obrigatórios")
+            raise ValueError("VideoHooks with accept, complete and abort are required")
         # A private namespace prevents touching the resize service's task files.
         self.root = Path(task_root) / self.namespace
         self.root.mkdir(parents=True, exist_ok=True)
@@ -57,7 +57,7 @@ class VideoTaskService:
                         context = VideoContext(task["_userId"], task["_profile"], task["_projectId"])
                         self._abort(context, task)
                 except (ValueError, KeyError, OSError):
-                    LOGGER.exception("Falha ao repetir compensação de %s", path.parent.name)
+                    LOGGER.exception("Failed to retry compensation for %s", path.parent.name)
 
     def _retry_loop(self):
         while not self._retry_stop.wait(30):
@@ -79,7 +79,7 @@ class VideoTaskService:
             task.pop("_abortPending", None)
         except Exception:
             task["_abortPending"] = True
-            LOGGER.exception("Não foi possível libertar a quota de %s; repetir automaticamente", task["id"])
+            LOGGER.exception("Could not release quota for %s; retrying automatically", task["id"])
         self._save(task)
 
     def _recover(self):
@@ -99,18 +99,18 @@ class VideoTaskService:
                 if task["status"] in ACTIVE or task.get("_abortPending"):
                     if task["status"] in ACTIVE:
                         task.update(status="failed", finishedAt=utc_now(), errorCode="PROCESSING_INTERRUPTED",
-                                    error="O processamento foi interrompido. Tente novamente.")
+                                    error="Processing was interrupted. Please try again.")
                     self._abort(context, task)
                 self._clean(VideoJob(task, context), keep_result=task["status"] == "completed")
             except (ValueError, KeyError, OSError):
-                LOGGER.exception("Não foi possível recuperar a tarefa %s", directory.name)
+                LOGGER.exception("Could not recover task %s", directory.name)
 
     @staticmethod
     def _context(context):
         if not isinstance(context, VideoContext) or not context.user_id:
-            raise VideoError("AUTHENTICATION_REQUIRED", "É necessário iniciar sessão.", 401)
+            raise VideoError("AUTHENTICATION_REQUIRED", "Sign in to continue.", 401)
         if context.profile not in {"free", "premium"}:
-            raise VideoError("PROFILE_NOT_ALLOWED", "O perfil Anónimo não pode processar vídeo.", 403)
+            raise VideoError("PROFILE_NOT_ALLOWED", "Anonymous users cannot process video.", 403)
         return context
 
     @staticmethod
@@ -124,9 +124,9 @@ class VideoTaskService:
                 raise ValueError
             task = json.loads((self.root / task_id / "task.json").read_text())
         except (ValueError, FileNotFoundError, OSError):
-            raise VideoError("TASK_NOT_FOUND", "Tarefa não encontrada.", 404) from None
+            raise VideoError("TASK_NOT_FOUND", "Task not found.", 404) from None
         if task.get("_userId") != context.user_id or task.get("_projectId") != context.project_id:
-            raise VideoError("TASK_NOT_FOUND", "Tarefa não encontrada.", 404)
+            raise VideoError("TASK_NOT_FOUND", "Task not found.", 404)
         return task
 
     def get(self, task_id, context):
@@ -156,7 +156,7 @@ class VideoTaskService:
             try:
                 process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=errors)
             except FileNotFoundError:
-                raise VideoError("FFMPEG_UNAVAILABLE", "FFmpeg não está disponível.", 503) from None
+                raise VideoError("FFMPEG_UNAVAILABLE", "FFmpeg is unavailable.", 503) from None
             try:
                 os.set_blocking(process.stdout.fileno(), False)
                 pending = b""
@@ -164,9 +164,9 @@ class VideoTaskService:
                     selector.register(process.stdout, selectors.EVENT_READ)
                     while process.poll() is None:
                         if job.cancelled.is_set():
-                            raise VideoError("CANCELLED", "Tarefa cancelada.")
+                            raise VideoError("CANCELLED", "Task canceled.")
                         if time.monotonic() >= deadline:
-                            raise VideoError("PROCESSING_TIMEOUT", "O tempo máximo de processamento foi excedido.")
+                            raise VideoError("PROCESSING_TIMEOUT", "The maximum processing time was exceeded.")
                         for key, _ in selector.select(timeout=0.1):
                             chunk = os.read(key.fileobj.fileno(), 65536)
                             if not chunk:
@@ -186,8 +186,8 @@ class VideoTaskService:
                                             self._save(job.task)
                 if process.returncode:
                     errors.seek(0)
-                    LOGGER.error("FFmpeg vídeo %s: %s", job.task["id"], errors.read()[-2000:].decode(errors="replace"))
-                    raise VideoError("PROCESSING_FAILED", "O processamento falhou. Tente novamente.", 422)
+                    LOGGER.error("FFmpeg video %s: %s", job.task["id"], errors.read()[-2000:].decode(errors="replace"))
+                    raise VideoError("PROCESSING_FAILED", "Processing failed. Please try again.", 422)
             finally:
                 self._stop(process)
                 process.stdout.close()
@@ -210,14 +210,14 @@ class VideoTaskService:
             self._execute(job, command, duration, deadline)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                raise VideoError("PROCESSING_TIMEOUT", "O tempo máximo de processamento foi excedido.")
+                raise VideoError("PROCESSING_TIMEOUT", "The maximum processing time was exceeded.")
             result = probe_video(output, timeout=min(60, remaining))
             self._validate_result(info, result, task)
             with job.lock:
                 if job.cancelled.is_set():
                     return
                 if time.monotonic() >= deadline:
-                    raise VideoError("PROCESSING_TIMEOUT", "O tempo máximo de processamento foi excedido.")
+                    raise VideoError("PROCESSING_TIMEOUT", "The maximum processing time was exceeded.")
                 task["result"] = {"duration": result.duration, "width": result.width,
                                   "height": result.height, "fps": float(result.fps),
                                   "size": output.stat().st_size, "hasAudio": result.has_audio}
@@ -225,7 +225,7 @@ class VideoTaskService:
                 # compensate any partial integration if it raises an exception.
                 self.hooks.complete(job.context, self.public(task), output)
                 if time.monotonic() >= deadline:
-                    raise VideoError("PROCESSING_TIMEOUT", "O tempo máximo de processamento foi excedido.")
+                    raise VideoError("PROCESSING_TIMEOUT", "The maximum processing time was exceeded.")
                 # Auxiliary inputs/private source copies must be gone before
                 # exposing successful completion (UC3 RN7).
                 self._clean(job, keep_result=True)
@@ -249,10 +249,10 @@ class VideoTaskService:
         with self._lock:
             job = self._jobs.get(task_id)
         if job is None:
-            raise VideoError("TASK_NOT_ACTIVE", "A tarefa já não está ativa.", 409)
+            raise VideoError("TASK_NOT_ACTIVE", "The task is no longer active.", 409)
         with job.lock:
             if job.task["status"] not in ACTIVE:
-                raise VideoError("TASK_NOT_ACTIVE", "A tarefa já não está ativa.", 409)
+                raise VideoError("TASK_NOT_ACTIVE", "The task is no longer active.", 409)
             job.cancelled.set()
             job.task.update(status="cancelled", finishedAt=utc_now())
             self._save(job.task)
@@ -265,10 +265,10 @@ class VideoTaskService:
     def download(self, task_id, context):
         task = self._load(task_id, context)
         if task["status"] != "completed":
-            raise VideoError("RESULT_NOT_READY", "O resultado ainda não está disponível.", 409)
+            raise VideoError("RESULT_NOT_READY", "The result is not available yet.", 409)
         output = self.root / task_id / f"result.{task['outputFormat']}"
         if not output.is_file():
-            raise VideoError("RESULT_NOT_FOUND", "O resultado não foi encontrado.", 404)
+            raise VideoError("RESULT_NOT_FOUND", "Result not found.", 404)
         return output, task["downloadName"]
 
     def close(self):
