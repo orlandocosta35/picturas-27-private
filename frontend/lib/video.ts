@@ -129,6 +129,10 @@ export type VideoResult = {
   size?: number;
   // Only present in concatenation results (number of joined videos).
   inputs?: number;
+  processor?: string;
+  frameCount?: number;
+  zipBytes?: number;
+  preview?: string[];
 };
 const trimPath = (user: string, project: string) =>
   `/projects/${user}/${project}/video`;
@@ -224,6 +228,100 @@ export async function downloadVideoResult(
       headers: credentials(token),
       responseType: "blob",
     })
+  ).data;
+}
+
+export type FrameMode = "fps" | "every_n" | "all";
+export type FrameImageFormat = "jpeg" | "png";
+export type VideoFramesTask = {
+  id: string;
+  status: "queued" | "processing" | "completed" | "failed" | "cancelled";
+  progress: number;
+  outputFormat: "zip";
+  downloadName?: string;
+  estimatedFrames?: number;
+  estimatedZipBytes?: number;
+  maxFrames?: number;
+  maxZipBytes?: number;
+  result?: {
+    processor: "frames";
+    operation: "frames";
+    frameCount: number;
+    zipBytes: number;
+    startSeconds: number;
+    endSeconds: number;
+    durationSeconds: number;
+    mode: FrameMode;
+    imageFormat: FrameImageFormat;
+    quality: number | null;
+    preview: string[];
+  };
+  error?: { message?: string } | string | null;
+};
+
+const framesPath = (user: string, project: string) =>
+  `/projects/${user}/${project}/video/frames`;
+
+export async function createVideoFramesTask(
+  user: string,
+  project: string,
+  token: string,
+  params: {
+    startSeconds: number;
+    endSeconds: number;
+    mode: FrameMode;
+    fps?: number;
+    everyN?: number;
+    format: FrameImageFormat;
+    quality?: number;
+  },
+) {
+  return (
+    await api.post<VideoFramesTask>(framesPath(user, project), params, {
+      headers: credentials(token),
+    })
+  ).data;
+}
+
+export async function getVideoFramesTask(
+  user: string,
+  project: string,
+  token: string,
+  id: string,
+) {
+  return (
+    await api.get<VideoFramesTask>(
+      `${framesPath(user, project)}/tasks/${id}`,
+      { headers: credentials(token) },
+    )
+  ).data;
+}
+
+export async function cancelVideoFramesTask(
+  user: string,
+  project: string,
+  token: string,
+  id: string,
+) {
+  return (
+    await api.delete<VideoFramesTask>(
+      `${framesPath(user, project)}/tasks/${id}`,
+      { headers: credentials(token) },
+    )
+  ).data;
+}
+
+export async function downloadVideoFramesTask(
+  user: string,
+  project: string,
+  token: string,
+  id: string,
+) {
+  return (
+    await api.get<Blob>(
+      `${framesPath(user, project)}/tasks/${id}/download`,
+      { headers: credentials(token), responseType: "blob" },
+    )
   ).data;
 }
 

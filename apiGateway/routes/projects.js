@@ -3,6 +3,7 @@ var router = express.Router();
 router.use(require("./videoTrim"));
 router.use(require("./videoAudio"));
 router.use(require("./videoConcat"));
+router.use(require("./videoFrames"));
 
 const axios = require("axios");
 

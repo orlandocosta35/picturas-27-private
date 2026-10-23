@@ -1,6 +1,6 @@
 # Processamento de vídeo
 
-O `server.py` configura a aplicação Flask e regista os casos de uso. Os módulos em `use_cases/` contêm redimensionamento (`resize.py`, UC1), corte (`trim.py`, UC2), áudio (`audio.py`, UC3) e concatenação (`concat.py`, UC5). Cada operação tem um ficheiro `*_integration.py` para o registo e arranque. O pacote `utils` reúne tipos e limites (`common.py`), análise de ficheiros (`media.py`), ciclo de tarefas partilhado (`tasks.py`) e autenticação e integração com quota/biblioteca (`integration.py`).
+O `server.py` configura a aplicação Flask e regista os casos de uso. Os módulos em `use_cases/` contêm redimensionamento (`resize.py`, UC1), corte (`trim.py`, UC2), áudio (`audio.py`, UC3), extração de frames (`frames.py`, UC4) e concatenação (`concat.py`, UC5). Cada operação tem um ficheiro `*_integration.py` para o registo e arranque. O pacote `utils` reúne tipos e limites (`common.py`), análise de ficheiros (`media.py`), ciclo de tarefas partilhado (`tasks.py`) e autenticação e integração com quota/biblioteca (`integration.py`).
 
 O UC1 conserva o seu ciclo de tarefas, recuperação e limpeza em `use_cases/resize.py`. As suas tarefas continuam diretamente na raiz de `VIDEO_TASK_ROOT`, preservando tarefas e resultados existentes. As rotas `/video/resize` e `/video/tasks/<task_id>` mantêm-se iguais.
 
@@ -53,6 +53,27 @@ Prefixo: `/projects/:user/:project/video` (autenticação JWT obrigatória).
 | GET | `/results/:id/download` | Descarregar um corte guardado na biblioteca. |
 
 O POST recebe JSON com `startSeconds`, `endSeconds` e `mode` (`fast` ou `precise`). A confirmação é um novo pedido com os tempos efetivos apresentados pelo servidor; o intervalo é novamente validado.
+
+## UC4 — Extração de frames
+
+O UC4 usa o ciclo de tarefas partilhado, com diretório próprio `tasks/frames`,
+audience `video-frames` e resultados no formato `zip`. O gateway obtém sempre o
+vídeo original guardado no projeto; o cliente envia apenas os parâmetros de
+extração.
+
+| Método | Rota | Finalidade |
+|---|---|---|
+| POST | `/frames` | Criar uma tarefa de extração. |
+| GET | `/frames/tasks` | Recuperar tarefas de frames do utilizador neste projeto. |
+| GET | `/frames/tasks/:id` | Consultar estado, progresso e metadados. |
+| DELETE | `/frames/tasks/:id` | Cancelar uma tarefa ativa. |
+| GET | `/frames/tasks/:id/download` | Descarregar o ZIP da tarefa concluída. |
+
+Os resultados publicados aparecem nas rotas genéricas `/results` e
+`/results/:id/download`. O serviço `projects` guarda a cópia permanente em
+`image_data` e usa `application/zip` para o download. Os ficheiros temporários
+do processamento permanecem em `video_data` e são removidos depois da
+publicação ou em caso de falha.
 
 ## Persistência e limites de execução
 
