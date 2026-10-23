@@ -1,5 +1,5 @@
 """UC-VID-003. Audio operations reuse the persistent video-task lifecycle."""
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 import json
 import math
 from pathlib import Path
@@ -11,7 +11,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
 from utils.common import VideoError, VideoJob, utc_now, profile_limits, EPSILON
-from utils.media import probe_json, probe_video
+from utils.media import audio_notice, probe_json, probe_video, select_audio
 from utils.tasks import VideoTaskService
 
 AUDIO_MAX_BYTES = 20_000_000  # RN2 says 20 MB; the MiB decision covers video inputs.
@@ -118,6 +118,8 @@ def plan_audio(info, original_duration, auxiliary, params):
 
 
 def build_audio_command(source, destination, info, task):
+    # The chosen readable track; '0:a:0' for tasks created before audioStreamIndex existed.
+    original = f'0:{task["audioStreamIndex"]}' if task.get('audioStreamIndex') is not None else '0:a:0'
     command = ['ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'error', '-xerror', '-y', '-i', str(source)]
     operation = task['operation']
     if operation == 'overlay':
@@ -130,7 +132,7 @@ def build_audio_command(source, destination, info, task):
     else:
         duration = info.duration
         effective = task['effectiveAudioDuration']
-        audio_input = '1:a:0' if operation == 'overlay' else '0:a:0'
+        audio_input = '1:a:0' if operation == 'overlay' else original
         chain = [f'atrim=duration={effective:.9f}', 'asetpts=PTS-STARTPTS', f'volume={task["volume"] / 100:.9f}']
         if task['fadeIn']:
             chain.append(f'afade=t=in:st=0:d={task["fadeIn"]:.9f}')
@@ -150,7 +152,7 @@ def build_audio_command(source, destination, info, task):
             offset = task.get('originalStartSeconds', 0)
             alignment = (f'atrim=start={-offset:.9f},asetpts=PTS-STARTPTS,' if offset < 0
                          else f'adelay={offset * 1000:.6f}:all=1,' if offset > 0 else '')
-            filters += (f';[0:a:0]asetpts=PTS-STARTPTS,{alignment}volume={task["originalVolume"] / 100:.9f},'
+            filters += (f';[{original}]asetpts=PTS-STARTPTS,{alignment}volume={task["originalVolume"] / 100:.9f},'
                         f'apad,atrim=duration={duration:.9f}[original];'
                         '[original][new]amix=inputs=2:duration=longest:normalize=0:dropout_transition=0[audio]')
         else:
@@ -193,9 +195,11 @@ class AudioService(VideoTaskService):
         if info.duration > max_duration + EPSILON:
             raise VideoError('INPUT_TOO_LONG', 'O vídeo excede a duração permitida para o perfil.')
         streams = probe_json(directory / 'input', ['-show_streams']).get('streams', [])
-        audio = [s for s in streams if s.get('codec_type') == 'audio']
-        if len(audio) > 1:
-            raise VideoError('MULTIPLE_AUDIO_TRACKS', 'O MVP não suporta vídeos com várias faixas de áudio.', 415)
+        # REQ-VID-COM-005 (revisto): use the first readable audio track, ignore the rest.
+        chosen, ignored = select_audio(streams)
+        audio = [chosen] if chosen else []
+        info = replace(info, has_audio=chosen is not None)
+        notice = audio_notice(chosen, ignored)
         try:
             original_duration = float(audio[0].get('duration', info.duration)) if audio else 0
             if not math.isfinite(original_duration) or original_duration <= 0:
@@ -211,7 +215,8 @@ class AudioService(VideoTaskService):
                 raise ValueError
         except (ValueError, TypeError):
             raise VideoError('UNREADABLE_VIDEO', 'Não foi possível determinar a sincronização do áudio.', 422) from None
-        return info, original_duration, auxiliary_info, original_start
+        audio_stream = dict(index=chosen['index'] if chosen else None, notice=notice)
+        return info, original_duration, auxiliary_info, original_start, audio_stream
 
     def submit_audio(self, video, auxiliary, params, context, inspect=False):
         self._context(context)
@@ -223,13 +228,15 @@ class AudioService(VideoTaskService):
         accepted = attempted = False
         task = None
         try:
-            info, original_duration, aux, original_start = self._stage(video, auxiliary, context, directory)
-            summary = dict(video={**asdict(info), 'fps': float(info.fps), 'audioDuration': original_duration},
+            info, original_duration, aux, original_start, audio_stream = self._stage(video, auxiliary, context, directory)
+            summary = dict(video={**asdict(info), 'fps': float(info.fps), 'audioDuration': original_duration,
+                                  'audioNotice': audio_stream['notice']},
                            audio=asdict(aux) if aux else None)
             if inspect:
                 return summary, 200
             plan = plan_audio(info, original_duration, aux, params)
             plan['originalStartSeconds'] = original_start
+            plan['audioStreamIndex'] = audio_stream['index']
             if plan['status'] != 'ready':
                 return {**plan, **summary}, 200
             original = Path(secure_filename(video.filename or 'video')).stem

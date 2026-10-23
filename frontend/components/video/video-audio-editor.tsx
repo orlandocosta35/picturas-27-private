@@ -382,6 +382,11 @@ export function VideoAudioEditor({
                       : "Sem faixa de áudio"}
                   </p>
                 )}
+                {metadata?.video.audioNotice && (
+                  <p className="text-sm text-amber-600 dark:text-amber-400">
+                    {metadata.video.audioNotice}
+                  </p>
+                )}
                 {!metadata && !loading && (
                   <Button
                     variant="outline"

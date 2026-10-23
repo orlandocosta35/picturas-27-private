@@ -34,8 +34,9 @@ router.get("/:user/:project/video/concat/library", auth.checkToken, async (req, 
   }
 });
 
-// Body: { videos: [projectId, ...] } in the desired order (RN2). The result is
-// published in :project, the project from which the operation was started.
+// Body: { videos: [projectId, ...], convert?: true } in the desired order (RN2).
+// convert confirms re-encoding when the videos cannot be joined by copy. The
+// result is published in :project, the project from which the operation was started.
 router.post("/:user/:project/video/concat", auth.checkToken, async (req, res) => {
   const sources = [];
   try {
@@ -81,6 +82,7 @@ router.post("/:user/:project/video/concat", auth.checkToken, async (req, res) =>
           : {}),
       });
     }
+    if (req.body.convert === true) form.append("convert", "true");
     const result = await axios.post(video, form, {
       headers: { ...form.getHeaders(), ...headers },
       maxBodyLength: Infinity,

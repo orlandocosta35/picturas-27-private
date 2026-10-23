@@ -22,15 +22,20 @@ from use_cases.concat import (ConcatError, ConcatService, create_concat_blueprin
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import functools
 from utils.common import VideoContext, VideoError, VideoHooks
+from utils.media import audio_notice, select_audio
 
 
 def make_video(path, seconds=2, size="160x96", audio=True, rate=12, variable=False,
-               sample_rate=48000):
+               sample_rate=48000, audio_tracks=1):
     command = ["ffmpeg", "-nostdin", "-loglevel", "error", "-y",
                "-f", "lavfi", "-i", f"testsrc=duration={seconds}:size={size}:rate={rate}"]
     if audio:
-        command += ["-f", "lavfi", "-i", f"sine=duration={seconds}:sample_rate={sample_rate}",
-                    "-c:a", "aac", "-ac", "2"]
+        for track in range(audio_tracks):
+            command += ["-f", "lavfi", "-i",
+                        f"sine=frequency={440 * (track + 1)}:duration={seconds}:sample_rate={sample_rate}"]
+        command += ["-map", "0:v"] + [arg for track in range(audio_tracks)
+                                      for arg in ("-map", f"{track + 1}:a")]
+        command += ["-c:a", "aac", "-ac", "2"]
     command += ["-c:v", "libx264", "-threads", "2", "-pix_fmt", "yuv420p",
                 "-video_track_timescale", "12800", "-shortest"]
     if variable:
@@ -81,6 +86,7 @@ class Fixtures(unittest.TestCase):
         cls.quote = make_video(root / "it's.mp4")
         cls.variable = make_video(root / "variable.mp4", seconds=3, variable=True)
         cls.khz44 = make_video(root / "khz44.mp4", sample_rate=44100)
+        cls.two_tracks = make_video(root / "two_tracks.mp4", audio_tracks=2)
 
     @classmethod
     def tearDownClass(cls):
@@ -100,22 +106,44 @@ class ValidationTests(Fixtures):
         error = self.code([self.a] * 6)
         self.assertEqual(error.code, "TOO_MANY_VIDEOS")
         self.assertTrue(error.details["suggestPremium"])
-        self.assertEqual(len(prepare_inputs([self.a] * 6, "premium")), 6)
+        self.assertEqual(len(prepare_inputs([self.a] * 6, "premium")[0]), 6)
         self.assertFalse(self.code([self.a] * 21, "premium").details["suggestPremium"])
 
     def test_anonymous_profile_is_rejected(self):
         self.assertEqual(self.code([self.a, self.b], "anonymous").status, 403)
 
-    def test_incompatible_videos_name_the_video_and_field(self):
+    def test_incompatible_videos_ask_for_conversion_naming_the_video_and_field(self):
         cases = [(self.big, "width"), (self.silent, "audio"), (self.fps30, "r_frame_rate")]
         for other, field in cases:
             with self.subTest(field=field):
                 error = self.code([self.a, other])
-                self.assertEqual(error.code, "INCOMPATIBLE_VIDEOS")
+                self.assertEqual((error.code, error.status), ("CONVERSION_REQUIRED", 409))
                 self.assertEqual((error.details["index"], error.details["field"]), (1, field))
+                # O alvo da conversão é o formato do primeiro vídeo.
+                target = error.details["target"]
+                self.assertEqual((target["width"], target["height"], target["container"]), (160, 96, "mp4"))
+
+    def test_confirmed_conversion_returns_the_target_and_compatible_videos_copy(self):
+        inputs, target = prepare_inputs([self.a, self.big], "free", convert=True)
+        self.assertEqual((len(inputs), target["width"], target["fpsValue"]), (2, 160, 12))
+        self.assertIsNone(prepare_inputs([self.a, self.b], "free", convert=True)[1])
 
     def test_videos_without_audio_are_compatible_with_each_other(self):
-        self.assertEqual(len(prepare_inputs([self.silent, self.silent], "free")), 2)
+        self.assertEqual(len(prepare_inputs([self.silent, self.silent], "free")[0]), 2)
+
+    def test_first_readable_audio_track_is_used_and_the_others_reported(self):
+        info = probe_input(self.two_tracks)
+        self.assertEqual(info.audio_index, 1)
+        self.assertIn("2 faixas de áudio", info.notice)
+        self.assertIsNone(probe_input(self.a).notice)
+
+    def test_select_audio_skips_tracks_ffmpeg_cannot_read(self):
+        streams = [{"index": 0, "codec_type": "audio", "codec_name": "unknown"},
+                   {"index": 1, "codec_type": "video", "codec_name": "h264"},
+                   {"index": 2, "codec_type": "audio", "codec_name": "aac"}]
+        self.assertEqual(select_audio(streams), (streams[2], 1))
+        self.assertEqual(select_audio(streams[:2]), (None, 1))
+        self.assertIn("não pode ser lido", audio_notice(None, 1))
 
     def test_unreadable_input_reports_its_position(self):
         broken = Path(self.fixtures.name) / "broken.mp4"
@@ -200,9 +228,10 @@ class ServiceTests(Fixtures):
         self.service.close()
         self.temp.cleanup()
 
-    def submit(self, *paths):
+    def submit(self, *paths, convert=False):
         files = [(io.BytesIO(path.read_bytes()), path.name) for path in paths]
-        return self.client.post("/video/concat", data={"videos": files})
+        data = {"videos": files, **({"convert": "true"} if convert else {})}
+        return self.client.post("/video/concat", data=data)
 
     def wait(self, task_id, final=("completed", "failed", "cancelled")):
         deadline = time.monotonic() + 30
@@ -249,10 +278,10 @@ class ServiceTests(Fixtures):
         self.assertEqual(self.client.get("/video/concat/library").status_code, 403)
 
     def test_invalid_selection_creates_no_task_nor_reservation(self):
-        for paths, code in [((self.a,), "TOO_FEW_VIDEOS"), ((self.a, self.big), "INCOMPATIBLE_VIDEOS")]:
+        for paths, code in [((self.a,), "TOO_FEW_VIDEOS"), ((self.a, self.big), "CONVERSION_REQUIRED")]:
             with self.subTest(code=code):
                 response = self.submit(*paths)
-                self.assertIn(response.status_code, {400, 422})
+                self.assertIn(response.status_code, {400, 409})
                 self.assertEqual(response.get_json()["code"], code)
         self.assertFalse(self.ledger.reserved | self.ledger.committed | self.ledger.aborted)
         self.assertEqual(list(self.service.root.iterdir()), [])
@@ -268,6 +297,33 @@ class ServiceTests(Fixtures):
         task = self.wait(response.get_json()["id"])
         self.assertEqual(task["status"], "completed", task)
         self.assertAlmostEqual(task["result"]["duration"], 2 * info.duration, delta=0.2)
+
+    def test_confirmed_conversion_joins_different_videos(self):
+        # Resolução, FPS e presença de áudio diferentes; o primeiro define o formato.
+        response = self.submit(self.a, self.big, self.silent, self.fps30, convert=True)
+        self.assertEqual(response.status_code, 202, response.get_json())
+        created = response.get_json()
+        self.assertEqual(created["mode"], "convert")
+        task = self.wait(created["id"])
+        self.assertEqual(task["status"], "completed", task)
+        self.assertEqual((task["result"]["width"], task["result"]["height"]), (160, 96))
+        self.assertAlmostEqual(task["result"]["fps"], 12, delta=0.01)
+        self.assertTrue(task["result"]["hasAudio"])
+        self.assertAlmostEqual(task["result"]["duration"], 8, delta=0.4)
+        self.assertEqual(self.ledger.committed, {created["id"]})
+
+    def test_videos_with_several_audio_tracks_are_copied_with_one_and_warned(self):
+        response = self.submit(self.two_tracks, self.two_tracks)
+        self.assertEqual(response.status_code, 202, response.get_json())
+        created = response.get_json()
+        self.assertEqual((created["mode"], len(created["warnings"])), ("copy", 2))
+        task = self.wait(created["id"])
+        self.assertEqual(task["status"], "completed", task)
+        output = self.service.root / created["id"] / "result.mp4"
+        streams = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "stream=codec_type",
+                                  "-of", "csv=p=0", str(output)],
+                                 capture_output=True, text=True, check=True).stdout.split()
+        self.assertEqual(sorted(streams), ["audio", "video"])
 
     def test_quota_rejection_does_not_start_processing(self):
         self.ledger.reject = True

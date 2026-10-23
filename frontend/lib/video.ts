@@ -34,6 +34,8 @@ export type VideoResizeTask = {
   message?: string;
   error?: VideoTaskError | string | null;
   downloadName?: string;
+  // e.g. audio tracks left out (only the first readable one is used).
+  inputMetadata?: { warnings?: string[] };
 };
 
 export async function createVideoResizeTask(
@@ -234,6 +236,8 @@ export type AudioMetadata = {
     width: number;
     height: number;
     fps: number;
+    // Set when audio tracks are left out (only the first readable one is used).
+    audioNotice?: string | null;
   };
   audio: { duration: number; format: string } | null;
 };
@@ -377,9 +381,21 @@ export type VideoLibraryItem = {
   videoCodec?: string;
   hasAudio?: boolean;
   audioCodec?: string | null;
+  // Set when audio tracks are left out (only the first readable one is used).
+  audioNotice?: string | null;
   compatibility?: CompatibilityField[];
   error?: string;
   code?: string;
+};
+// Format of a converted concatenation: the first video's resolution, FPS and container.
+export type ConcatTarget = {
+  width: number;
+  height: number;
+  fps: string;
+  fpsValue: number;
+  container: string;
+  videoCodec: string;
+  audioCodec: string;
 };
 export type VideoConcatTask = {
   id: string;
@@ -392,6 +408,10 @@ export type VideoConcatTask = {
   outputFormat: string;
   inputs: Array<{ name: string; duration: number }>;
   expectedDuration: number;
+  // "copy" joins without re-encoding; "convert" re-encodes to target.
+  mode?: "copy" | "convert";
+  target?: ConcatTarget | null;
+  warnings?: string[];
   error?: string;
   errorCode?: string;
   result?: {
@@ -421,11 +441,12 @@ export async function createVideoConcatTask(
   project: string,
   token: string,
   videos: string[],
+  convert = false,
 ) {
   return (
     await api.post<VideoConcatTask>(
       `${trimPath(user, project)}/concat`,
-      { videos },
+      convert ? { videos, convert } : { videos },
       { headers: credentials(token) },
     )
   ).data;

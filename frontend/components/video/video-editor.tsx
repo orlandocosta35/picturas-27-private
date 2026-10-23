@@ -115,6 +115,8 @@ export function VideoEditor({
   const [outputFormat, setOutputFormat] = useState<VideoOutputFormat>("mp4");
   const [customResolution, setCustomResolution] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Non-blocking warnings from the service, e.g. ignored audio tracks.
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [progress, setProgress] = useState<number | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
@@ -247,6 +249,7 @@ export function VideoEditor({
     }
 
     setError(null);
+    setWarnings([]);
     setProgress(0);
     setDownloadUrl(null);
     createVideoResizeTask(userId, projectId, token, file, {
@@ -257,6 +260,7 @@ export function VideoEditor({
     })
       .then((task) => {
         setTaskId(task.id);
+        setWarnings(task.inputMetadata?.warnings ?? []);
         communicationFailuresRef.current = 0;
         progressTimerRef.current = window.setInterval(async () => {
           try {
@@ -606,6 +610,16 @@ export function VideoEditor({
                   {error}
                 </p>
               )}
+
+              {warnings.map((warning) => (
+                <p
+                  key={warning}
+                  role="status"
+                  className="text-sm text-amber-600 dark:text-amber-400"
+                >
+                  {warning}
+                </p>
+              ))}
 
               {progress !== null && (
                 <div className="space-y-2">
