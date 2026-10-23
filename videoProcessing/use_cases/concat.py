@@ -26,7 +26,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
 from utils.common import VideoError, VideoJob, profile_limits, utc_now
-from utils.media import audio_notice, probe_json, select_audio
+from utils.media import audio_notice, probe_json, rotation, select_audio
 from utils.tasks import VideoTaskService
 
 
@@ -101,19 +101,6 @@ def _container(fmt, video):
     raise ConcatError("UNSUPPORTED_FORMAT", "This video format is not supported.", 415)
 
 
-def _rotation(video):
-    for item in video.get("side_data_list", []):
-        if "rotation" in item:
-            try:
-                return int(round(float(item["rotation"]))) % 360
-            except (TypeError, ValueError):
-                return 0
-    try:
-        return int(video.get("tags", {}).get("rotate", 0)) % 360
-    except (TypeError, ValueError):
-        return 0
-
-
 def probe_input(path):
     """Lê o conteúdo real do ficheiro; a extensão não conta como prova."""
     path = Path(path)
@@ -166,7 +153,7 @@ def _describe(data, path, size):
         # O concat demuxer associa as faixas pela posição, por isso a ordem e o
         # tipo de todas as faixas têm de coincidir para a cópia direta.
         layout=",".join(s.get("codec_type", "?") for s in streams),
-        rotation=_rotation(video), fps=fps, notice=audio_notice(audio, ignored),
+        rotation=rotation(video), fps=fps, notice=audio_notice(audio, ignored),
     )
 
 

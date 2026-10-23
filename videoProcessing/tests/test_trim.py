@@ -117,6 +117,20 @@ class TrimTests(unittest.TestCase):
         result.close()
         self.assertFalse((self.service.root / task_id / "input").exists())
 
+    def test_precise_trim_of_rotated_video_keeps_displayed_size(self):
+        rotated = Path(self.temp.name) / "rotated.mp4"
+        # Same pixels as self.mp4 (160x96), but marked to be shown rotated -90
+        # degrees, like phone videos. Re-encoding applies the rotation.
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-display_rotation:v:0", "-90",
+                        "-i", str(self.mp4), "-c", "copy", str(rotated)], check=True)
+        info = probe_video(rotated)
+        self.assertEqual((info.width, info.height), (96, 160))
+        response = self.submit(source=rotated)
+        self.assertEqual(response.status_code, 202, response.get_json())
+        task = self.wait(response.get_json()["id"])
+        self.assertEqual(task["status"], "completed", task)
+        self.assertEqual((task["result"]["width"], task["result"]["height"]), (96, 160))
+
     def test_precise_webm_without_audio(self):
         response = self.submit(source=self.webm)
         self.assertEqual(response.status_code, 202, response.get_json())
