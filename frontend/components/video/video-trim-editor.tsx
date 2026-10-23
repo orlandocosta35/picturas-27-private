@@ -82,7 +82,7 @@ export function VideoTrimEditor({
   const [plan, setPlan] = useState<TrimPlan | null>(null);
   const [task, setTask] = useState<VideoTrimTask | null>(null);
   const [history, setHistory] = useState<VideoTrimTask[]>([]);
-  const [results, setResults] = useState<VideoResult[]>([]);
+  const [latestResult, setLatestResult] = useState<VideoResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -155,15 +155,11 @@ export function VideoTrimEditor({
     }
     let disposed = false;
     setLoading(true);
-    Promise.all([
-      listVideoTrimTasks(userId, projectId, token),
-      listVideoResults(userId, projectId, token),
-    ])
-      .then(([tasks, saved]) => {
+    listVideoTrimTasks(userId, projectId, token)
+      .then((tasks) => {
         if (disposed) return;
         setHistory(tasks);
         setTask(tasks.find((t) => active(t)) ?? tasks[0] ?? null);
-        setResults(saved);
       })
       .catch((e) => {
         if (!disposed) setError(message(e));
@@ -224,9 +220,11 @@ export function VideoTrimEditor({
           setTask(current);
           timer = setTimeout(poll, 1000);
         } else {
-          const saved = await listVideoResults(userId!, projectId!, token!);
-          if (disposed) return;
-          setResults(saved);
+          if (current.status === "completed") {
+            const saved = await listVideoResults(userId!, projectId!, token!);
+            const result = saved.find((item) => item.id === current.id);
+            if (result) setLatestResult(result);
+          }
           setHistory((previous) => [
             current,
             ...previous.filter((t) => t.id !== current.id),
@@ -299,20 +297,6 @@ export function VideoTrimEditor({
       setBusy(false);
     }
   }
-  async function download(item: VideoResult) {
-    if (!userId || !projectId || !token) return;
-    try {
-      const blob = await downloadVideoResult(userId, projectId, token, item.id);
-      const object = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = object;
-      link.download = item.name;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(object), 1000);
-    } catch (e) {
-      setError(message(e));
-    }
-  }
   // Typed times snap to the nearest keyframe once the field loses focus.
   function settle(which: "start" | "end") {
     if (!points) return;
@@ -327,6 +311,25 @@ export function VideoTrimEditor({
     video.current?.pause();
     if (which === "start") setStart(value);
     else setEnd(value);
+  }
+  async function downloadLatestResult() {
+    if (!latestResult || !userId || !projectId || !token) return;
+    try {
+      const blob = await downloadVideoResult(
+        userId,
+        projectId,
+        token,
+        latestResult.id,
+      );
+      const object = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = object;
+      link.download = latestResult.name;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(object), 1000);
+    } catch (e) {
+      setError(message(e));
+    }
   }
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
@@ -588,29 +591,19 @@ export function VideoTrimEditor({
               </CardContent>
             </Card>
           </div>
-          <Card>
-            <CardHeader>
-              <CardTitle>Saved results</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {!results.length && (
-                <p className="text-sm text-muted-foreground">
-                  No saved results yet.
-                </p>
-              )}
-              {results.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between gap-3"
-                >
-                  <span className="break-all">{item.name}</span>
-                  <Button variant="outline" onClick={() => void download(item)}>
-                    Download
-                  </Button>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          {latestResult && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Trimmed video ready</CardTitle>
+              </CardHeader>
+              <CardContent className="flex flex-wrap items-center justify-between gap-3">
+                <span className="break-all">{latestResult.name}</span>
+                <Button variant="outline" onClick={() => void downloadLatestResult()}>
+                  Download
+                </Button>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
       {notice && <p role="status">{notice}</p>}

@@ -69,6 +69,7 @@ export function VideoAudioEditor({
   const [task, setTask] = useState<AudioTask | null>(null);
   const [plan, setPlan] = useState<AudioPlan | null>(null);
   const [results, setResults] = useState<VideoResult[]>([]);
+  const [latestResult, setLatestResult] = useState<VideoResult | null>(null);
   const [preview, setPreview] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [inspecting, setInspecting] = useState(false);
@@ -211,6 +212,10 @@ export function VideoAudioEditor({
           if (disposed) return;
           setTask(current);
           setResults(saved);
+          if (current.status === "completed") {
+            const result = saved.find((item) => item.id === current.id);
+            if (result) setLatestResult(result);
+          }
           refreshSession.current({ userId: userId!, token: token! });
           setError(
             current.status === "failed"
@@ -679,44 +684,23 @@ export function VideoAudioEditor({
               </CardContent>
             </Card>
           </div>
-          <Card>
-            <CardHeader>
-              <CardTitle>Saved results</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {preview && (
-                <video
-                  src={preview}
-                  controls
-                  className="max-h-96 w-full rounded bg-black"
-                />
-              )}
-              {!results.length && <p>No results yet.</p>}
-              {results.map((result) => (
-                <div
-                  key={result.id}
-                  className="flex flex-wrap items-center justify-between gap-2"
-                >
-                  <span className="break-all">{result.name}</span>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => void openResult(result, false)}
-                    >
-                      Preview
-                    </Button>
-                    <Button
-                      variant="outline"
-                      onClick={() => void openResult(result, true)}
-                    >
-                      Download
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
         </>
+      )}
+      {latestResult && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Audio result ready</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3">
+            <span className="break-all">{latestResult.name}</span>
+            <Button
+              variant="outline"
+              onClick={() => void openResult(latestResult, true)}
+            >
+              Download
+            </Button>
+          </CardContent>
+        </Card>
       )}
       {notice && <p role="status">{notice}</p>}
       {error && (
