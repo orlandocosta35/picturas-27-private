@@ -17,6 +17,27 @@ router.use((req, res, next) => {
     return res.sendStatus(401);
   next();
 });
+// UC5 library: the original video of each of the user's video projects.
+// Declared before the "/:user/:project" middleware so "library" is not read as an ID.
+router.get("/:user/library", async (req, res, next) => {
+  if (!/^[a-f0-9]{24}$/i.test(req.params.user)) return res.sendStatus(400);
+  try {
+    const projects = await Project.find(
+      { user_id: req.params.user, type: "video", video: { $ne: null } },
+      { name: 1, "video.originalName": 1, "video.mimeType": 1 },
+    ).sort({ _id: 1 });
+    res.json(
+      projects.map((p) => ({
+        projectId: p._id,
+        projectName: p.name,
+        name: p.video.originalName,
+        mimeType: p.video.mimeType,
+      })),
+    );
+  } catch (e) {
+    next(e);
+  }
+});
 router.use("/:user/:project", async (req, res, next) => {
   if (
     ![req.params.user, req.params.project].every((v) =>

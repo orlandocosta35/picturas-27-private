@@ -25,7 +25,7 @@ function internal() {
   if (!secret) throw new Error("VIDEO_INTERNAL_SECRET is required");
   return { Authorization: `Bearer ${secret}` };
 }
-async function context(req) {
+async function context(req, audience = "video-trim") {
   if (String(req.authUserId) !== req.params.user) {
     throw Object.assign(new Error("Not allowed"), { status: 403 });
   }
@@ -48,7 +48,7 @@ async function context(req) {
   const token = jwt.sign(
     { user_id: req.authUserId, project_id: req.params.project, profile },
     process.env.VIDEO_INTERNAL_SECRET,
-    { expiresIn: "5m", audience: "video-trim" },
+    { expiresIn: "5m", audience },
   );
   return { Authorization: `Bearer ${token}` };
 }
@@ -202,3 +202,5 @@ router.get(
   },
 );
 module.exports = router;
+// Shared with videoConcat.js (UC5), which uses the same trust boundary.
+module.exports.shared = { agent, projects, sourceName, internal, context, failure };

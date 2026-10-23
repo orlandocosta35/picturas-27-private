@@ -17,19 +17,26 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flask import Flask
-from concat import (ConcatError, ConcatService, create_concat_blueprint, prepare_inputs,
-                    probe_input, write_list_file)
+from concat import (ConcatError, ConcatService, create_concat_blueprint, describe,
+                    inspect_source, prepare_inputs, probe_input, write_list_file)
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import functools
 from trim import TrimContext, TrimError, TrimHooks
 
 
-def make_video(path, seconds=2, size="160x96", audio=True, rate=12):
+def make_video(path, seconds=2, size="160x96", audio=True, rate=12, variable=False,
+               sample_rate=48000):
     command = ["ffmpeg", "-nostdin", "-loglevel", "error", "-y",
                "-f", "lavfi", "-i", f"testsrc=duration={seconds}:size={size}:rate={rate}"]
     if audio:
-        command += ["-f", "lavfi", "-i", f"sine=duration={seconds}:sample_rate=48000",
+        command += ["-f", "lavfi", "-i", f"sine=duration={seconds}:sample_rate={sample_rate}",
                     "-c:a", "aac", "-ac", "2"]
     command += ["-c:v", "libx264", "-threads", "2", "-pix_fmt", "yuv420p",
-                "-video_track_timescale", "12800", "-shortest", str(path)]
+                "-video_track_timescale", "12800", "-shortest"]
+    if variable:
+        # Retira frames a meio, como um telemóvel faz com a imagem parada: FPS variável.
+        command += ["-vf", "select='not(between(n,5,15))'", "-fps_mode", "vfr"]
+    command.append(str(path))
     subprocess.run(command, check=True)
     return path
 
@@ -72,6 +79,8 @@ class Fixtures(unittest.TestCase):
         cls.silent = make_video(root / "silent.mp4", audio=False)
         cls.fps30 = make_video(root / "fps30.mp4", rate=30)
         cls.quote = make_video(root / "it's.mp4")
+        cls.variable = make_video(root / "variable.mp4", seconds=3, variable=True)
+        cls.khz44 = make_video(root / "khz44.mp4", sample_rate=44100)
 
     @classmethod
     def tearDownClass(cls):
@@ -114,6 +123,57 @@ class ValidationTests(Fixtures):
         error = self.code([self.a, broken])
         self.assertEqual((error.code, error.details["index"]), ("UNREADABLE_VIDEO", 1))
 
+    def test_audio_mismatch_names_the_audio_field(self):
+        error = self.code([self.a, self.khz44])
+        self.assertEqual(error.details["field"], "audio_sample_rate")
+        self.assertIn("frequência do áudio", error.details["detail"])
+
+    def test_describe_exposes_metadata_and_the_rn7_signature(self):
+        info = describe(probe_input(self.a))
+        self.assertEqual((info["width"], info["height"], info["fps"]), (160, 96, 12.0))
+        self.assertEqual((info["videoCodec"], info["audioCodec"], info["hasAudio"]), ("h264", "aac", True))
+        self.assertAlmostEqual(info["duration"], 2, delta=0.1)
+        fields = [entry["field"] for entry in info["compatibility"]]
+        self.assertEqual(fields[:2], ["container", "codec_name"])
+        self.assertIn("audio_sample_rate", fields)
+        # A interface compara assinaturas: compatíveis são iguais, incompatíveis não.
+        same = describe(probe_input(self.b))["compatibility"]
+        other = describe(probe_input(self.big))["compatibility"]
+        self.assertEqual(same, info["compatibility"])
+        self.assertNotEqual(other, info["compatibility"])
+        self.assertFalse(describe(probe_input(self.silent))["hasAudio"])
+
+    def test_inspect_source_reads_over_http_with_credentials(self):
+        received = []
+
+        class Handler(SimpleHTTPRequestHandler):
+            def do_GET(self):
+                received.append(self.headers.get("Authorization"))
+                if self.headers.get("Authorization") != "Bearer secret":
+                    self.send_error(401)
+                    return
+                super().do_GET()
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(
+            Handler, directory=str(Path(self.fixtures.name))))
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            url = f"http://127.0.0.1:{server.server_port}/a.mp4"
+            remote = inspect_source(url, {"Authorization": "Bearer secret"})
+            self.assertEqual(describe(remote)["compatibility"],
+                             describe(probe_input(self.a))["compatibility"])
+            self.assertEqual(remote.size, self.a.stat().st_size)
+            self.assertIn("Bearer secret", received)
+            with self.assertRaises(ConcatError) as error:
+                inspect_source(url, {"Authorization": "Bearer wrong"})
+            self.assertEqual(error.exception.code, "UNREADABLE_VIDEO")
+        finally:
+            server.shutdown()
+            server.server_close()
+
     def test_list_file_escapes_quotes_in_paths(self):
         target = Path(self.fixtures.name) / "list.txt"
         write_list_file([probe_input(self.quote)], target)
@@ -129,7 +189,11 @@ class ServiceTests(Fixtures):
             self.ledger.accept, self.ledger.complete, self.ledger.abort))
         app = Flask(__name__)
         app.config["TESTING"] = True
-        app.register_blueprint(create_concat_blueprint(self.service, lambda: self.context))
+        self.library_calls = []
+        def library(context):
+            self.library_calls.append(context)
+            return [{"projectId": "p1", "name": "a.mp4", **describe(probe_input(self.a))}]
+        app.register_blueprint(create_concat_blueprint(self.service, lambda: self.context, library))
         self.client = app.test_client()
 
     def tearDown(self):
@@ -175,6 +239,15 @@ class ServiceTests(Fixtures):
         remaining = {p.name for p in (self.service.root / created["id"]).iterdir()}
         self.assertEqual(remaining, {"task.json", "result.mp4"})
 
+    def test_library_route_returns_metadata_for_the_caller(self):
+        response = self.client.get("/video/concat/library")
+        self.assertEqual(response.status_code, 200)
+        [item] = response.get_json()
+        self.assertEqual((item["name"], item["width"], item["hasAudio"]), ("a.mp4", 160, True))
+        self.assertEqual(self.library_calls, [self.context])
+        self.context = TrimContext("alice", "anonymous", "project-a")
+        self.assertEqual(self.client.get("/video/concat/library").status_code, 403)
+
     def test_invalid_selection_creates_no_task_nor_reservation(self):
         for paths, code in [((self.a,), "TOO_FEW_VIDEOS"), ((self.a, self.big), "INCOMPATIBLE_VIDEOS")]:
             with self.subTest(code=code):
@@ -183,6 +256,18 @@ class ServiceTests(Fixtures):
                 self.assertEqual(response.get_json()["code"], code)
         self.assertFalse(self.ledger.reserved | self.ledger.committed | self.ledger.aborted)
         self.assertEqual(list(self.service.root.iterdir()), [])
+
+    def test_variable_fps_videos_are_concatenated(self):
+        info = probe_input(self.variable)
+        self.assertNotEqual(info.video["r_frame_rate"], subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+             "stream=avg_frame_rate", "-of", "csv=p=0", str(self.variable)],
+            capture_output=True, text=True, check=True).stdout.strip())
+        response = self.submit(self.variable, self.variable)
+        self.assertEqual(response.status_code, 202, response.get_json())
+        task = self.wait(response.get_json()["id"])
+        self.assertEqual(task["status"], "completed", task)
+        self.assertAlmostEqual(task["result"]["duration"], 2 * info.duration, delta=0.2)
 
     def test_quota_rejection_does_not_start_processing(self):
         self.ledger.reject = True

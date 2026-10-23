@@ -3,6 +3,7 @@
 import {
   Check,
   Film,
+  Layers,
   LoaderCircle,
   Play,
   Scissors,
@@ -31,8 +32,9 @@ import {
   VideoOutputFormat,
 } from "@/lib/video";
 import { useUpdateSession } from "@/lib/mutations/session";
+import { VideoConcatEditor } from "./video-concat-editor";
 
-type VideoOperation = "resize" | "trim";
+type VideoOperation = "resize" | "trim" | "concat";
 type VideoMetadata = {
   duration: number;
   width: number;
@@ -331,6 +333,18 @@ export function VideoEditor({
     metadata !== null &&
     !isSameAspectRatio(metadata.width, metadata.height, width, height);
 
+  // UC-VID-005 works on several videos of the library, so it has its own screen.
+  if (operation === "concat") {
+    return (
+      <VideoConcatEditor
+        userId={userId}
+        projectId={projectId}
+        token={token}
+        onBack={() => setOperation("resize")}
+      />
+    );
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div>
@@ -429,6 +443,14 @@ export function VideoEditor({
                 >
                   <Film className="size-4" />
                   Redimensionar
+                </Button>
+                <Button
+                  variant="outline"
+                  className="col-span-2 h-auto justify-start gap-2 py-3"
+                  onClick={() => setOperation("concat")}
+                >
+                  <Layers className="size-4" />
+                  Concatenar com outros vídeos
                 </Button>
               </div>
 

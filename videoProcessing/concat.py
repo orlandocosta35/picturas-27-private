@@ -38,10 +38,11 @@ DURATION_TOLERANCE = 0.1
 VIDEO_KEYS = ("codec_name", "profile", "width", "height", "pix_fmt", "time_base", "r_frame_rate")
 AUDIO_KEYS = ("codec_name", "sample_rate", "channels", "time_base")
 FIELD_NAMES = {
-    "container": "formato do ficheiro", "codec_name": "codec", "profile": "perfil do codec",
+    "container": "formato do ficheiro", "codec_name": "codec de vídeo", "profile": "perfil do codec",
     "width": "largura", "height": "altura", "pix_fmt": "formato de píxel",
-    "time_base": "base temporal", "r_frame_rate": "FPS", "sample_rate": "frequência",
-    "channels": "canais", "audio": "presença de áudio",
+    "time_base": "base temporal do vídeo", "r_frame_rate": "FPS", "audio": "presença de áudio",
+    "audio_codec_name": "codec de áudio", "audio_sample_rate": "frequência do áudio",
+    "audio_channels": "canais de áudio", "audio_time_base": "base temporal do áudio",
 }
 
 
@@ -61,10 +62,11 @@ class ConcatInput:
     audio: dict | None
 
 
-def _ffprobe(path, timeout=60):
+def _ffprobe(path, timeout=60, input_options=()):
     try:
         result = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_format", "-show_streams", "-of", "json", str(path)],
+            ["ffprobe", "-v", "error", *input_options,
+             "-show_format", "-show_streams", "-of", "json", str(path)],
             check=True, capture_output=True, text=True, timeout=timeout,
         )
         return json.loads(result.stdout)
@@ -86,7 +88,27 @@ def _container(fmt, video):
 def probe_input(path):
     """Lê o conteúdo real do ficheiro; a extensão não conta como prova."""
     path = Path(path)
-    data = _ffprobe(path)
+    return _describe(_ffprobe(path), path, path.stat().st_size)
+
+
+def inspect_source(url, headers=None, timeout=30):
+    """Lê os metadados de um vídeo servido por HTTP(S) sem o descarregar todo.
+
+    O ffprobe pede só os bytes de que precisa (cabeçalho e índice) através de
+    pedidos com Range. Os serviços internos usam certificados autoassinados.
+    """
+    options = ["-tls_verify", "0", "-rw_timeout", str(timeout * 1_000_000)]
+    if headers:
+        options += ["-headers", "".join(f"{key}: {value}\r\n" for key, value in headers.items())]
+    data = _ffprobe(url, timeout, options)
+    try:
+        size = int(data.get("format", {}).get("size") or 0)
+    except ValueError:
+        size = 0
+    return _describe(data, url, size)
+
+
+def _describe(data, path, size):
     streams = data.get("streams", [])
     videos = [s for s in streams if s.get("codec_type") == "video"
               and not s.get("disposition", {}).get("attached_pic")]
@@ -98,21 +120,44 @@ def probe_input(path):
     fmt, video = data.get("format", {}), videos[0]
     try:
         duration = float(video.get("duration", fmt.get("duration")))
-        if not math.isfinite(duration) or duration <= 0:
+        if not math.isfinite(duration) or duration <= 0 or Fraction(video["r_frame_rate"]) <= 0:
             raise ValueError
-        # FPS variável não é suportado: a cadência média tem de bater com a nominal
-        # (0,5% de margem, porque a média é calculada a partir de uma duração arredondada).
-        nominal, average = Fraction(video["r_frame_rate"]), Fraction(video["avg_frame_rate"])
-        if nominal <= 0 or abs(average - nominal) / nominal > Fraction(1, 200):
-            raise ConcatError("VARIABLE_FPS", "Vídeos com FPS variável não são suportados.", 415)
+        # FPS variável é aceite (decisão do grupo, só no UC5): a cópia de streams
+        # mantém o timestamp de cada frame. A RN7 compara o FPS nominal (r_frame_rate).
     except (KeyError, TypeError, ValueError, ZeroDivisionError):
         raise ConcatError("UNREADABLE_VIDEO", "Não foi possível ler este vídeo.", 422) from None
     return ConcatInput(
-        path=path, container=_container(fmt, video), duration=duration,
-        size=path.stat().st_size,
+        path=path, container=_container(fmt, video), duration=duration, size=size,
         video={key: video.get(key) for key in VIDEO_KEYS},
         audio={key: audios[0].get(key) for key in AUDIO_KEYS} if audios else None,
     )
+
+
+def compatibility_signature(item):
+    """Os campos da RN7, pela ordem em que são comparados.
+
+    É a mesma lista que a interface recebe para avisar de incompatibilidades
+    antes do pedido, por isso o aviso e a validação nunca divergem.
+    """
+    entries = [("container", item.container)]
+    entries += [(key, item.video[key]) for key in VIDEO_KEYS]
+    entries.append(("audio", item.audio is not None))
+    if item.audio is not None:
+        entries += [(f"audio_{key}", item.audio[key]) for key in AUDIO_KEYS]
+    return entries
+
+
+def describe(item):
+    """Metadados para a interface (REQ-VID-CON-007)."""
+    return {
+        "duration": item.duration, "size": item.size, "container": item.container,
+        "width": item.video["width"], "height": item.video["height"],
+        "fps": round(float(Fraction(item.video["r_frame_rate"])), 3),
+        "videoCodec": item.video["codec_name"], "hasAudio": item.audio is not None,
+        "audioCodec": item.audio["codec_name"] if item.audio else None,
+        "compatibility": [{"field": field, "label": FIELD_NAMES[field], "value": str(value)}
+                          for field, value in compatibility_signature(item)],
+    }
 
 
 def validate_count(count, profile):
@@ -147,16 +192,13 @@ def validate_limits(inputs, profile):
 
 def check_compatibility(inputs):
     """RN7: compara todas as entradas com a primeira e indica o primeiro campo diferente."""
-    first = inputs[0]
+    reference = compatibility_signature(inputs[0])
     for index, item in enumerate(inputs[1:], start=1):
-        if item.container != first.container:
-            mismatch = "container"
-        else:
-            mismatch = next((k for k in VIDEO_KEYS if item.video[k] != first.video[k]), None)
-        if mismatch is None and (item.audio is None) != (first.audio is None):
-            mismatch = "audio"
-        if mismatch is None and item.audio is not None:
-            mismatch = next((k for k in AUDIO_KEYS if item.audio[k] != first.audio[k]), None)
+        # "audio" vem antes dos campos de áudio, por isso listas de tamanho
+        # diferente (um com áudio, outro sem) param aí.
+        mismatch = next((field for (field, expected), (_, actual)
+                         in zip(reference, compatibility_signature(item))
+                         if expected != actual), None)
         if mismatch:
             raise ConcatError("INCOMPATIBLE_VIDEOS",
                               "Os vídeos selecionados não são compatíveis para concatenação",
@@ -331,8 +373,12 @@ class ConcatService(TrimService):
                 self._jobs.pop(task["id"], None)
 
 
-def create_concat_blueprint(service, context_provider):
-    """Mesmas regras do trim: context_provider() devolve um contexto de confiança."""
+def create_concat_blueprint(service, context_provider, library_provider=None):
+    """Mesmas regras do trim: context_provider() devolve um contexto de confiança.
+
+    library_provider(context), se existir, devolve a biblioteca do utilizador já
+    com os metadados de cada vídeo (REQ-VID-CON-007).
+    """
     blueprint = Blueprint("video_concat", __name__, url_prefix="/video/concat")
 
     @blueprint.errorhandler(TrimError)
@@ -354,6 +400,11 @@ def create_concat_blueprint(service, context_provider):
         # A ordem dos campos "videos" no multipart é a ordem da concatenação (RN2).
         task, status = service.submit(request.files.getlist("videos"), caller)
         return jsonify(task), status
+
+    if library_provider is not None:
+        @blueprint.get("/library")
+        def library():
+            return jsonify(library_provider(context()))
 
     @blueprint.get("/tasks")
     def list_tasks():

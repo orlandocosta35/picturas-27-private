@@ -5,6 +5,7 @@ own results folder, which projects reads when publishing (field "kind").
 """
 import atexit
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import hmac
 import json
@@ -14,12 +15,12 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from flask import request
-from concat import ConcatService, create_concat_blueprint
+from concat import ConcatError, ConcatService, create_concat_blueprint, describe, inspect_source
 from trim import TrimContext, TrimError, TrimHooks, TrimService, create_trim_blueprint
 
 
 def register_trim(app, task_root):
-    hooks, context = _integration('video-trim', 'trim')
+    hooks, context, _ = _integration('video-trim', 'trim')
     service = TrimService(task_root, hooks)
     app.register_blueprint(create_trim_blueprint(service, context))
     app.extensions['video_trim'] = service
@@ -28,9 +29,26 @@ def register_trim(app, task_root):
 
 
 def register_concat(app, task_root):
-    hooks, context = _integration('video-concat', 'concat')
+    hooks, context, call = _integration('video-concat', 'concat')
+    projects = os.environ.get('VIDEO_PROJECTS_URL', 'https://projects:9001/internal/video')
+    auth = {'Authorization': f'Bearer {os.environ["VIDEO_INTERNAL_SECRET"]}'}
+
+    def library(ctx):
+        # projects lists only this user's video projects and /source refuses others.
+        items = call(f'{projects}/{ctx.user_id}/library', method='GET')
+
+        def with_metadata(item):
+            try:
+                info = inspect_source(f'{projects}/{ctx.user_id}/{item["projectId"]}/source', auth)
+                return {**item, **describe(info)}
+            except ConcatError as error:
+                return {**item, 'error': error.message, 'code': error.code}
+
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            return list(pool.map(with_metadata, items))
+
     service = ConcatService(task_root, hooks)
-    app.register_blueprint(create_concat_blueprint(service, context))
+    app.register_blueprint(create_concat_blueprint(service, context, library))
     app.extensions['video_concat'] = service
     atexit.register(service.close)
     return service
@@ -110,4 +128,4 @@ def _integration(audience, kind):
         except (ValueError, KeyError, TypeError, AttributeError):
             raise TrimError('AUTHENTICATION_REQUIRED', 'Credenciais de vídeo inválidas ou expiradas.', 401) from None
 
-    return TrimHooks(accept, complete, abort), context
+    return TrimHooks(accept, complete, abort), context, call
