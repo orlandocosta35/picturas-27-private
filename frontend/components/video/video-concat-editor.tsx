@@ -14,6 +14,7 @@ import {
   listVideoConcatTasks,
   listVideoLibrary,
   listVideoResults,
+  ConcatTarget,
   VideoConcatTask,
   VideoLibraryItem,
   VideoResult,
@@ -114,12 +115,18 @@ export function VideoConcatEditor({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // Set when the service asks to confirm re-encoding (CONVERSION_REQUIRED).
+  const [conversion, setConversion] = useState<{
+    detail?: string;
+    target: ConcatTarget;
+  } | null>(null);
   const updateSession = useUpdateSession();
   const refreshSession = useRef(updateSession.mutate);
   refreshSession.current = updateSession.mutate;
   const running = active(task);
   const conflict = incompatibility(sequence);
-  const valid = sequence.length >= 2 && !conflict;
+  // Incompatible videos can still be joined after confirming the conversion.
+  const valid = sequence.length >= 2;
   const expectedDuration = sequence.reduce(
     (sum, item) => sum + (item.video.duration ?? 0),
     0,
@@ -216,6 +223,7 @@ export function VideoConcatEditor({
     setSequence(next);
     setNotice(null);
     setError(null);
+    setConversion(null);
   }
   function move(index: number, offset: number) {
     const next = [...sequence];
@@ -223,11 +231,12 @@ export function VideoConcatEditor({
     change(next);
   }
 
-  async function submit() {
+  async function submit(convert = false) {
     if (!userId || !projectId || !token || !valid) return;
     setBusy(true);
     setError(null);
     setNotice(null);
+    setConversion(null);
     try {
       setTask(
         await createVideoConcatTask(
@@ -235,10 +244,23 @@ export function VideoConcatEditor({
           projectId,
           token,
           sequence.map((item) => item.video.projectId),
+          convert,
         ),
       );
       refreshSession.current({ userId, token });
     } catch (e) {
+      const data = (
+        e as {
+          response?: {
+            data?: { code?: string; detail?: string; target?: ConcatTarget };
+          };
+        }
+      ).response?.data;
+      if (data?.code === "CONVERSION_REQUIRED" && data.target) {
+        // Nothing was created nor reserved; ask before re-encoding.
+        setConversion({ detail: data.detail, target: data.target });
+        return;
+      }
       setError(message(e));
       // Recover an accepted task if the response was lost. Do not cancel on navigation.
       try {
@@ -301,13 +323,16 @@ export function VideoConcatEditor({
         )}
       </div>
       {!userId || !projectId || !token ? (
-        <p>Abre um projeto de vídeo para concatenar vídeos da tua biblioteca.</p>
+        <p>
+          Abre um projeto de vídeo para concatenar vídeos da tua biblioteca.
+        </p>
       ) : (
         <>
           <p className="text-sm text-muted-foreground">
             Os originais são preservados. O vídeo concatenado fica guardado nos
-            resultados deste projeto. Os vídeos têm de ter o mesmo formato,
-            codec, resolução e FPS.
+            resultados deste projeto. Vídeos com o mesmo formato, codec,
+            resolução e FPS são juntos sem perda de qualidade; os restantes
+            podem ser convertidos para o formato do primeiro vídeo.
           </p>
           <div className="grid gap-6 lg:grid-cols-2">
             <Card>
@@ -343,6 +368,11 @@ export function VideoConcatEditor({
                       ) : (
                         <p className="text-sm text-muted-foreground">
                           {metadataText(video)}
+                        </p>
+                      )}
+                      {video.audioNotice && (
+                        <p className="text-sm text-amber-600 dark:text-amber-400">
+                          {video.audioNotice}
                         </p>
                       )}
                     </div>
@@ -420,11 +450,14 @@ export function VideoConcatEditor({
                   ))}
                 </fieldset>
                 {conflict ? (
-                  <p role="alert" className="text-sm text-destructive">
-                    Os vídeos selecionados não são compatíveis para
-                    concatenação. O vídeo {conflict.index + 1} difere do
-                    primeiro em: {conflict.label} ({conflict.actual ?? "—"} em
-                    vez de {conflict.expected}).
+                  <p
+                    role="status"
+                    className="text-sm text-amber-600 dark:text-amber-400"
+                  >
+                    Os vídeos não podem ser juntos sem conversão. O vídeo{" "}
+                    {conflict.index + 1} difere do primeiro em: {conflict.label}{" "}
+                    ({conflict.actual ?? "—"} em vez de {conflict.expected}).
+                    Será pedida confirmação para converter.
                   </p>
                 ) : (
                   <p className="text-sm text-muted-foreground">
@@ -433,12 +466,39 @@ export function VideoConcatEditor({
                       : "Selecione pelo menos dois vídeos para concatenar."}
                   </p>
                 )}
-                <Button
-                  disabled={!valid || busy || running || loading}
-                  onClick={() => void submit()}
-                >
-                  {busy ? "A preparar…" : "Concatenar vídeos"}
-                </Button>
+                {conversion ? (
+                  <div role="alert" className="space-y-2 rounded border p-3">
+                    <p>
+                      {conversion.detail ??
+                        "Os vídeos não são compatíveis para concatenação direta."}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Podem ser convertidos para o formato do primeiro vídeo:{" "}
+                      {conversion.target.width} × {conversion.target.height} ·{" "}
+                      {conversion.target.fpsValue} fps ·{" "}
+                      {conversion.target.container.toUpperCase()} (
+                      {conversion.target.videoCodec.toUpperCase()}). A conversão
+                      demora mais, recodifica a imagem e acrescenta margens
+                      pretas quando a proporção é diferente.
+                    </p>
+                    <Button
+                      disabled={busy || running}
+                      onClick={() => void submit(true)}
+                    >
+                      Converter e concatenar
+                    </Button>
+                    <Button variant="ghost" onClick={() => setConversion(null)}>
+                      Voltar a editar
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    disabled={!valid || busy || running || loading}
+                    onClick={() => void submit()}
+                  >
+                    {busy ? "A preparar…" : "Concatenar vídeos"}
+                  </Button>
+                )}
                 {task && (
                   <div className="space-y-2" aria-live="polite">
                     <p>
@@ -459,7 +519,16 @@ export function VideoConcatEditor({
                       {task.inputs.map((i) => i.name).join(" + ")}
                       {task.result &&
                         ` → ${timeText(task.result.duration)} · ${task.result.width} × ${task.result.height} · ${sizeText(task.result.size)}`}
+                      {task.mode === "convert" && " · convertido"}
                     </p>
+                    {task.warnings?.map((warning) => (
+                      <p
+                        key={warning}
+                        className="text-sm text-amber-600 dark:text-amber-400"
+                      >
+                        {warning}
+                      </p>
+                    ))}
                     {running && (
                       <Button
                         variant="outline"

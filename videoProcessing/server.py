@@ -14,6 +14,8 @@ from urllib.request import Request, urlopen
 
 from flask import Flask, jsonify, request, send_file
 
+from utils.media import UNREADABLE_CODECS, audio_notice, select_audio
+
 app = Flask(__name__)
 TASK_ROOT = Path(os.environ.get("VIDEO_TASK_ROOT", "/data/tasks"))
 TASK_ROOT.mkdir(parents=True, exist_ok=True)
@@ -43,10 +45,6 @@ TASK_LOCKS = {}
 TASK_LOCKS_GUARD = threading.Lock()
 RUNNING_TASKS = set()
 RUNNING_TASKS_GUARD = threading.Lock()
-SUPPORTED_CONTAINERS = {
-    "mp4": {"container": "mp4", "video": {"h264"}, "audio": {"aac"}},
-    "webm": {"container": "webm", "video": {"vp9"}, "audio": {"opus"}},
-}
 
 
 class VideoValidationError(Exception):
@@ -397,6 +395,8 @@ def inspect_video(path):
     format_data = metadata.get("format") or {}
     video_streams = [stream for stream in streams if stream.get("codec_type") == "video"]
     audio_streams = [stream for stream in streams if stream.get("codec_type") == "audio"]
+    # REQ-VID-COM-005 (revisto): only the first readable audio track is used.
+    audio, ignored_audio = select_audio(streams)
     subtitle_streams = [stream for stream in streams if stream.get("codec_type") == "subtitle"]
     unsupported_streams = [
         stream for stream in streams
@@ -407,11 +407,6 @@ def inspect_video(path):
         raise VideoValidationError(
             "INVALID_VIDEO_STREAMS",
             "O vídeo deve conter exatamente uma faixa de vídeo.",
-        )
-    if len(audio_streams) > 1:
-        raise VideoValidationError(
-            "MULTIPLE_AUDIO_STREAMS",
-            "O vídeo não pode conter mais do que uma faixa de áudio.",
         )
     if subtitle_streams:
         raise VideoValidationError(
@@ -432,8 +427,6 @@ def inspect_video(path):
     width = video.get("width")
     height = video.get("height")
     fps = parse_ratio(video.get("avg_frame_rate")) or parse_ratio(video.get("r_frame_rate"))
-    declared_fps = parse_ratio(video.get("r_frame_rate"))
-    average_fps = parse_ratio(video.get("avg_frame_rate"))
 
     if duration is None or duration <= 0:
         raise VideoValidationError(
@@ -450,11 +443,8 @@ def inspect_video(path):
             "INVALID_FRAME_RATE",
             "Não foi possível determinar uma taxa de fotogramas válida.",
         )
-    if declared_fps is None or average_fps is None or abs(declared_fps - average_fps) > 0.01:
-        raise VideoValidationError(
-            "VARIABLE_FRAME_RATE",
-            "Vídeos com FPS variável não são suportados.",
-        )
+    # Variable FPS is accepted (REQ-VID-COM-005 revisto): run_task keeps each
+    # frame's timestamp with -fps_mode passthrough.
 
     format_names = set(str(format_data.get("format_name", "")).split(","))
     if "mp4" in format_names:
@@ -467,18 +457,12 @@ def inspect_video(path):
             "O contentor do vídeo não é suportado. Usa MP4 ou WebM.",
         )
 
-    expected = SUPPORTED_CONTAINERS[container]
-    if video.get("codec_name") not in expected["video"]:
+    # REQ-VID-COM-006 (revisto): any input codec FFmpeg can read is accepted,
+    # because resize always re-encodes to H.264/AAC or VP9/Opus.
+    if video.get("codec_name", "") in UNREADABLE_CODECS:
         raise VideoValidationError(
-            "UNSUPPORTED_VIDEO_CODEC",
-            f"O vídeo {container.upper()} deve utilizar o codec "
-            f"{', '.join(sorted(expected['video']))}.",
-        )
-    if audio_streams and audio_streams[0].get("codec_name") not in expected["audio"]:
-        raise VideoValidationError(
-            "UNSUPPORTED_AUDIO_CODEC",
-            f"O áudio {container.upper()} deve utilizar o codec "
-            f"{', '.join(sorted(expected['audio']))}.",
+            "UNREADABLE_VIDEO",
+            "O codec de vídeo não pode ser lido.",
         )
 
     return {
@@ -489,10 +473,12 @@ def inspect_video(path):
         "height": height,
         "fps": fps,
         "videoCodec": video.get("codec_name"),
-        "audioCodec": audio_streams[0].get("codec_name") if audio_streams else None,
+        "audioCodec": audio.get("codec_name") if audio else None,
+        "audioStreamIndex": audio.get("index") if audio else None,
         "videoStreams": len(video_streams),
         "audioStreams": len(audio_streams),
         "subtitleStreams": len(subtitle_streams),
+        "warnings": [notice] if (notice := audio_notice(audio, ignored_audio)) else [],
     }
 
 
@@ -537,8 +523,15 @@ def run_task(task):
             if task["outputFormat"] == "mp4"
             else ["-c:v", "libvpx-vp9", "-c:a", "libopus"]
         )
+        # Explicit maps: the default would pick the audio track with most
+        # channels, which may be one FFmpeg cannot decode (e.g. iPhone APAC).
+        audio_index = input_metadata.get("audioStreamIndex")
+        audio_map = ["-map", f"0:{audio_index}"] if audio_index is not None else []
+        if "audioStreamIndex" not in input_metadata:
+            audio_map = ["-map", "0:a:0?"]  # tasks created before this change
         command = [
-            "ffmpeg", "-y", "-i", str(input_path), "-vf", video_filter,
+            "ffmpeg", "-y", "-i", str(input_path), "-map", "0:v:0", *audio_map,
+            "-vf", video_filter, "-fps_mode", "passthrough",
             "-progress", "pipe:1", "-nostats", *codec_args, str(output_path),
         ]
         update_task(task, progress=2, stage="encoding", message="A iniciar a conversão...")

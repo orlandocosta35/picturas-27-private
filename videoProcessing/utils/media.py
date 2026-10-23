@@ -54,3 +54,28 @@ def probe_video(path, timeout=60):
         raise VideoError("UNREADABLE_VIDEO", "Não foi possível ler este vídeo.", 422) from None
     return VideoInfo(duration, width, height, fps, container,
                      any(s.get("codec_type") == "audio" for s in streams), start_time)
+
+
+# Codecs reported by ffprobe for streams FFmpeg cannot decode (e.g. iPhone APAC).
+UNREADABLE_CODECS = {"", "none", "unknown"}
+
+
+def select_audio(streams):
+    """REQ-VID-COM-005 (revisto): use the first audio track FFmpeg can read.
+
+    Returns (stream, ignored): the chosen stream or None, and how many other
+    audio tracks are left out of the result.
+    """
+    audio = [s for s in streams if s.get("codec_type") == "audio"]
+    chosen = next((s for s in audio if s.get("codec_name", "") not in UNREADABLE_CODECS), None)
+    return chosen, len(audio) - (chosen is not None)
+
+
+def audio_notice(chosen, ignored):
+    """Warning shown to the user when audio tracks are left out (None if none are)."""
+    if not ignored:
+        return None
+    if chosen is None:
+        return "O áudio deste vídeo não pode ser lido; o resultado fica sem áudio."
+    return (f"O vídeo tem {ignored + 1} faixas de áudio. É usada só a primeira legível "
+            f"({chosen.get('codec_name')}); as outras são ignoradas.")

@@ -45,6 +45,12 @@ class AudioTests(unittest.TestCase):
         subprocess.run(['ffmpeg', '-v', 'error', '-i', str(cls.mp4), '-itsoffset', '0.5', '-i', str(cls.mp4),
             '-map', '0:v:0', '-map', '1:a:0', '-c', 'copy', '-t', '6', str(cls.offset)], check=True)
 
+        # Two audio tracks: silence first, then a tone. Only the first is used.
+        cls.two_tracks = Path(cls.fixtures.name) / 'two_tracks.mp4'
+        subprocess.run(['ffmpeg', '-v', 'error', '-i', str(cls.mp4), '-f', 'lavfi', '-i',
+            'anullsrc=r=48000:cl=stereo', '-map', '0:v:0', '-map', '1:a', '-map', '0:a:0',
+            '-c:v', 'copy', '-c:a', 'aac', '-shortest', str(cls.two_tracks)], check=True)
+
     @classmethod
     def tearDownClass(cls):
         cls.fixtures.cleanup()
@@ -106,6 +112,16 @@ class AudioTests(unittest.TestCase):
         self.assertAlmostEqual(task['result']['duration'], 6, delta=0.1)
         self.assertEqual(hashlib.sha256(self.mp4.read_bytes()).digest(), original)
         self.assertEqual(len(self.ledger.committed), 1)
+
+    def test_several_audio_tracks_use_the_first_and_warn(self):
+        info = self.submit(source=self.two_tracks, inspect=True).get_json()
+        self.assertIn('2 faixas de áudio', info['video']['audioNotice'])
+        output, _ = self.complete(self.submit(source=self.two_tracks, volume=100))
+        streams = subprocess.check_output(['ffprobe', '-v', 'error', '-show_entries', 'stream=codec_type',
+            '-of', 'csv=p=0', str(output)], text=True).split()
+        self.assertEqual(sorted(streams), ['audio', 'video'])
+        # The first track is silence; the tone in the second track must not leak in.
+        self.assertLess(self.rms(output, 1), 1e-4)
 
     def test_remove_requires_confirmation_then_removes_track(self):
         response = self.submit('remove')
