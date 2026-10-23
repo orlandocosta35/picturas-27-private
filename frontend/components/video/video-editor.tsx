@@ -3,7 +3,6 @@
 import {
   Check,
   Film,
-  Layers,
   LoaderCircle,
   Play,
   Scissors,
@@ -31,10 +30,12 @@ import {
   ResizeMode,
   VideoOutputFormat,
 } from "@/lib/video";
-import { useUpdateSession } from "@/lib/mutations/session";
+import { VideoAudioEditor } from "./video-audio-editor";
 import { VideoConcatEditor } from "./video-concat-editor";
+import { VideoTrimEditor } from "./video-trim-editor";
+import { useUpdateSession } from "@/lib/mutations/session";
 
-type VideoOperation = "resize" | "trim" | "concat";
+type VideoOperation = "resize" | "trim" | "audio" | "concat";
 type VideoMetadata = {
   duration: number;
   width: number;
@@ -69,8 +70,8 @@ function formatDuration(seconds: number) {
 }
 
 function formatFileSize(bytes: number) {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KiB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
 }
 
 function aspectRatio(width: number, height: number) {
@@ -333,19 +334,7 @@ export function VideoEditor({
     metadata !== null &&
     !isSameAspectRatio(metadata.width, metadata.height, width, height);
 
-  // UC-VID-005 works on several videos of the library, so it has its own screen.
-  if (operation === "concat") {
-    return (
-      <VideoConcatEditor
-        userId={userId}
-        projectId={projectId}
-        token={token}
-        onBack={() => setOperation("resize")}
-      />
-    );
-  }
-
-  return (
+  const legacyEditor = (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <div>
         <p className="text-sm font-medium text-primary">Fase 1 · MVP</p>
@@ -444,15 +433,10 @@ export function VideoEditor({
                   <Film className="size-4" />
                   Redimensionar
                 </Button>
-                <Button
-                  variant="outline"
-                  className="col-span-2 h-auto justify-start gap-2 py-3"
-                  onClick={() => setOperation("concat")}
-                >
-                  <Layers className="size-4" />
-                  Concatenar com outros vídeos
-                </Button>
               </div>
+
+              <Button variant="outline" onClick={() => setOperation("audio")}>Gerir áudio</Button>
+              <Button variant="outline" onClick={() => setOperation("concat")}>Concatenar com outros vídeos</Button>
 
               {operation === "trim" ? (
                 <div className="space-y-4">
@@ -706,4 +690,11 @@ export function VideoEditor({
       )}
     </div>
   );
+  // UC-VID-005 works on several videos of the library, so it has its own screen.
+  if (operation === "concat") return <VideoConcatEditor userId={userId} projectId={projectId}
+    token={token} onBack={() => setOperation("resize")} />;
+  if (operation === "audio") return <VideoAudioEditor initialFile={initialFile} userId={userId}
+    projectId={projectId} token={token} onTrim={() => setOperation("trim")} onResize={() => setOperation("resize")} />;
+  return operation === "trim" ? <VideoTrimEditor initialFile={initialFile} userId={userId}
+    projectId={projectId} token={token} onAudio={() => setOperation("audio")} onResize={() => setOperation("resize")} /> : legacyEditor;
 }

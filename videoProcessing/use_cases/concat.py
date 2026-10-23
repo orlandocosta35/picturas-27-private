@@ -4,10 +4,10 @@ A concatenação usa o concat demuxer do FFmpeg com cópia de streams
 (REQ-VID-CON-012). Por isso as entradas têm de ser compatíveis segundo a RN7;
 caso contrário o pedido é rejeitado antes de criar tarefa ou reservar quota.
 
-O ConcatService reutiliza do TrimService a fila, a recuperação no arranque, o
-cancelamento, o timeout e as compensações de quota/biblioteca. Muda apenas a
-receção das entradas (submit) e o processamento (_run). Os hooks têm o mesmo
-contrato descrito em trim.py.
+O ConcatService reutiliza do VideoTaskService (utils/tasks.py) a fila, a
+recuperação no arranque, o cancelamento, o timeout e as compensações de
+quota/biblioteca. Muda apenas a receção das entradas (submit) e o processamento
+(_run), porque o _run base só trata uma entrada.
 """
 
 from dataclasses import dataclass
@@ -16,7 +16,6 @@ import json
 import math
 from pathlib import Path
 import shutil
-import subprocess
 import time
 import uuid
 
@@ -24,13 +23,16 @@ from flask import Blueprint, jsonify, request, send_file
 from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 
-from trim import TrimError, TrimService, _Job, _now
+from utils.common import VideoError, VideoJob, profile_limits, utc_now
+from utils.media import probe_json
+from utils.tasks import VideoTaskService
 
 
 MIN_VIDEOS = 2
 MAX_VIDEOS = {"free": 5, "premium": 20}
-# RN2 comum: limites por vídeo de entrada (MB decimais, como no trim).
-LIMITS = {"free": (200_000_000, 300), "premium": (2_000_000_000, 1800)}
+# RN2 comum: os limites por vídeo vêm de profile_limits() (os mesmos valores do
+# compose usados pelo resize, trim e áudio).
+MIB = 1024 * 1024
 # RN4: tolerância de 0,1 s por vídeo concatenado.
 DURATION_TOLERANCE = 0.1
 
@@ -46,7 +48,7 @@ FIELD_NAMES = {
 }
 
 
-class ConcatError(TrimError):
+class ConcatError(VideoError):
     def __init__(self, code, message, status=400, **details):
         super().__init__(code, message, status, **details)
         self.message = message
@@ -63,17 +65,14 @@ class ConcatInput:
 
 
 def _ffprobe(path, timeout=60, input_options=()):
+    # As opções de entrada (ex.: cabeçalhos HTTP) têm de vir antes do ficheiro.
     try:
-        result = subprocess.run(
-            ["ffprobe", "-v", "error", *input_options,
-             "-show_format", "-show_streams", "-of", "json", str(path)],
-            check=True, capture_output=True, text=True, timeout=timeout,
-        )
-        return json.loads(result.stdout)
-    except FileNotFoundError:
-        raise ConcatError("FFPROBE_UNAVAILABLE", "FFprobe não está disponível.", 503) from None
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, ValueError):
-        raise ConcatError("UNREADABLE_VIDEO", "Não foi possível ler este vídeo.", 422) from None
+        return probe_json(path, [*input_options, "-show_format", "-show_streams"], timeout)
+    except ConcatError:
+        raise
+    except VideoError as error:
+        # Mesmos códigos; ConcatError permite indicar a posição do vídeo (index).
+        raise ConcatError(error.code, str(error), error.status) from None
 
 
 def _container(fmt, video):
@@ -175,17 +174,17 @@ def validate_count(count, profile):
 
 def validate_limits(inputs, profile):
     """Limites individuais de duração e tamanho do perfil (RN2 comum)."""
-    max_size, max_duration = LIMITS[profile]
-    premium_size, premium_duration = LIMITS["premium"]
+    max_size, max_duration = profile_limits(profile)
+    premium_size, premium_duration = profile_limits("premium")
     for index, item in enumerate(inputs):
         if item.duration > max_duration:
             raise ConcatError("VIDEO_TOO_LONG",
-                              f"O vídeo {index + 1} excede o limite de {max_duration // 60} minutos do perfil.",
+                              f"O vídeo {index + 1} excede o limite de {int(max_duration // 60)} minutos do perfil.",
                               index=index,
                               suggestPremium=profile == "free" and item.duration <= premium_duration)
         if item.size > max_size:
             raise ConcatError("VIDEO_TOO_LARGE",
-                              f"O vídeo {index + 1} excede o limite de {max_size // 1_000_000} MB do perfil.",
+                              f"O vídeo {index + 1} excede o limite de {max_size // MIB} MiB do perfil.",
                               413, index=index,
                               suggestPremium=profile == "free" and item.size <= premium_size)
 
@@ -263,7 +262,7 @@ def verify_result(output_path, inputs):
             "size": result.size, "hasAudio": result.audio is not None, "inputs": len(inputs)}
 
 
-class ConcatService(TrimService):
+class ConcatService(VideoTaskService):
     """Tarefas de concatenação persistentes em <task_root>/concat/<id>/."""
 
     namespace = "concat"
@@ -273,7 +272,7 @@ class ConcatService(TrimService):
         if self._closed:
             raise ConcatError("SERVICE_CLOSED", "O serviço está a terminar.", 503)
         validate_count(len(uploads), context.profile)
-        max_bytes = LIMITS[context.profile][0]
+        max_bytes = profile_limits(context.profile)[0]
         task_id = str(uuid.uuid4())
         directory = self.root / task_id
         directory.mkdir()
@@ -290,7 +289,7 @@ class ConcatService(TrimService):
                         size += len(chunk)
                         if size > max_bytes:
                             raise ConcatError("VIDEO_TOO_LARGE",
-                                              f"O vídeo {index + 1} excede o limite de {max_bytes // 1_000_000} MB do perfil.",
+                                              f"O vídeo {index + 1} excede o limite de {max_bytes // MIB} MiB do perfil.",
                                               413, index=index,
                                               suggestPremium=context.profile == "free")
                         output.write(chunk)
@@ -299,7 +298,7 @@ class ConcatService(TrimService):
             write_list_file(inputs, directory / "list.txt")
             container = inputs[0].container
             names = [secure_filename(u.filename or "") or f"video_{i + 1}" for i, u in enumerate(uploads)]
-            task = {"id": task_id, "status": "queued", "progress": 0, "createdAt": _now(),
+            task = {"id": task_id, "status": "queued", "progress": 0, "createdAt": utc_now(),
                     "outputFormat": container,
                     # RN6; o projects guarda por ID de tarefa, por isso nomes iguais não se substituem.
                     "downloadName": f"{Path(names[0]).stem}_concatenado.{container}",
@@ -315,7 +314,7 @@ class ConcatService(TrimService):
             self.hooks.accept(context, self.public(task))
             accepted = True
             self._save(task)
-            job = _Job(task, context)
+            job = VideoJob(task, context)
             with self._lock:
                 self._jobs[task_id] = job
             response = self.public(task)
@@ -323,11 +322,11 @@ class ConcatService(TrimService):
             return response, 202
         except Exception:
             if reservation_attempted:
-                task.update(status="failed", finishedAt=_now())
+                task.update(status="failed", finishedAt=utc_now())
                 self._abort(context, task)
                 with self._lock:
                     self._jobs.pop(task_id, None)
-                self._clean(_Job(task, context))
+                self._clean(VideoJob(task, context))
             raise
         finally:
             if not accepted and not (task and task.get("_abortPending")):
@@ -342,7 +341,7 @@ class ConcatService(TrimService):
             with job.lock:
                 if job.cancelled.is_set():
                     return
-                task.update(status="processing", startedAt=_now())
+                task.update(status="processing", startedAt=utc_now())
                 self._save(task)
             command = build_concat_command(directory / "list.txt", output, task["outputFormat"])
             self._execute(job, command, task["expectedDuration"], deadline)
@@ -357,12 +356,12 @@ class ConcatService(TrimService):
                 task["result"] = result
                 # Publica na biblioteca e consome a quota; tem de compensar se falhar.
                 self.hooks.complete(job.context, self.public(task), output)
-                task.update(status="completed", progress=100, finishedAt=_now())
+                task.update(status="completed", progress=100, finishedAt=utc_now())
                 self._save(task)
         except Exception as error:
             with job.lock:
                 if not job.cancelled.is_set():
-                    task.update(status="failed", finishedAt=_now(), error=str(error),
+                    task.update(status="failed", finishedAt=utc_now(), error=str(error),
                                 errorCode=getattr(error, "code", "PROCESSING_FAILED"))
                     self._save(task)
                     self._abort(job.context, task)
@@ -381,7 +380,7 @@ def create_concat_blueprint(service, context_provider, library_provider=None):
     """
     blueprint = Blueprint("video_concat", __name__, url_prefix="/video/concat")
 
-    @blueprint.errorhandler(TrimError)
+    @blueprint.errorhandler(VideoError)
     def handle_error(error):
         return jsonify(error=str(error), code=error.code, **error.details), error.status
 
@@ -396,7 +395,7 @@ def create_concat_blueprint(service, context_provider, library_provider=None):
     def submit():
         caller = context()
         # Limite por pedido; o limite de cada vídeo é verificado durante a receção.
-        request.max_content_length = MAX_VIDEOS[caller.profile] * LIMITS[caller.profile][0] + 1_048_576
+        request.max_content_length = MAX_VIDEOS[caller.profile] * profile_limits(caller.profile)[0] + MIB
         # A ordem dos campos "videos" no multipart é a ordem da concatenação (RN2).
         task, status = service.submit(request.files.getlist("videos"), caller)
         return jsonify(task), status

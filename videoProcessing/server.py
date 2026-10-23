@@ -662,7 +662,7 @@ def create_resize_task():
         if temporary_input.stat().st_size > max_size:
             raise VideoValidationError(
                 "VIDEO_TOO_LARGE",
-                f"O vídeo excede o limite de {max_size // (1024 * 1024)} MB do perfil.",
+                f"O vídeo excede o limite de {max_size // (1024 * 1024)} MiB do perfil.",
             )
         video_metadata = inspect_video(temporary_input)
         if video_metadata["duration"] > max_duration:
@@ -769,9 +769,13 @@ def download_task(task_id):
         return jsonify(error="Result file is missing"), 404
     return send_file(output, as_attachment=True, download_name=task["downloadName"])
 
-# UC2 is registered separately; the existing resize routes stay unchanged.
-from trim_integration import register_concat, register_trim
+# Register the modular UC2, UC3 and UC5 operations alongside resize.
+from use_cases.trim_integration import register_trim
+from use_cases.audio_integration import register_audio
+from use_cases.concat_integration import register_concat
+
 register_trim(app, TASK_ROOT)
+register_audio(app, TASK_ROOT)
 register_concat(app, TASK_ROOT)
 recover_tasks()
 threading.Thread(target=maintenance_loop, name="video-task-cleanup", daemon=True).start()

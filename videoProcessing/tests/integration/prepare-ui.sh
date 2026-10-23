@@ -6,6 +6,11 @@ mkdir -p /tmp/frontend/app/uc2-test
 cp /source/videoProcessing/tests/integration/ui-page.tsx /tmp/frontend/app/uc2-test/page.tsx
 cp /validation/ui-context.json /tmp/frontend/public/context.json
 cp /validation/fixtures/source.mp4 /tmp/frontend/public/fixture.mp4
+if [ -f /validation/audio-ui-context.json ]; then
+  mkdir -p /tmp/frontend/app/uc3-test
+  cp /source/videoProcessing/tests/integration/ui-audio-page.tsx /tmp/frontend/app/uc3-test/page.tsx
+  cp /validation/audio-ui-context.json /tmp/frontend/public/audio-context.json
+fi
 cat > /tmp/frontend/app/layout.tsx <<'LAYOUT'
 import "./globals.css";
 import ReactQueryProvider from "@/components/query-client";

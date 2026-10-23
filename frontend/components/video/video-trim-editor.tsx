@@ -51,12 +51,14 @@ export function VideoTrimEditor({
   projectId,
   token,
   onResize,
+  onAudio,
 }: {
   initialFile?: File;
   userId?: string;
   projectId?: string;
   token?: string;
   onResize: () => void;
+  onAudio?: () => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
   const [url, setUrl] = useState<string>();
@@ -261,6 +263,11 @@ export function VideoTrimEditor({
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">Recortar vídeo</h1>
+        {onAudio && (
+          <Button variant="outline" disabled={busy} onClick={onAudio}>
+            Gerir áudio
+          </Button>
+        )}
         <Button variant="outline" disabled={busy} onClick={onResize}>
           Redimensionar
         </Button>
@@ -476,7 +483,7 @@ export function VideoTrimEditor({
             <CardContent className="space-y-3">
               {!results.length && (
                 <p className="text-sm text-muted-foreground">
-                  Ainda não existem cortes guardados.
+                  Ainda não existem resultados guardados.
                 </p>
               )}
               {results.map((item) => (

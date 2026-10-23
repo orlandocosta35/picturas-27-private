@@ -1,6 +1,8 @@
 # UC-VID-005 — Concatenar Vídeos: relatório de implementação
 
-**Data:** 2026-10-21
+**Data:** 2026-10-21 (atualizado a 2026-10-23, depois do merge com o UC3)
+
+> **Nota sobre a estrutura:** depois do merge com o `main` (UC3), o UC5 segue a organização nova do serviço de vídeo. O código está em `use_cases/concat.py` e `use_cases/concat_integration.py` e usa `utils/` (`VideoTaskService`, `VideoError`, `profile_limits`, `register_video_service`). As alterações que o UC5 tinha feito ao `trim.py` e ao `trim_integration.py` deixaram de ser precisas, porque o `main` já trazia o equivalente. As referências a esses ficheiros nas secções abaixo descrevem o caminho seguido antes do merge; ver [`UC5-merge.md`](UC5-merge.md).
 **Estado:** backend e frontend implementados. Backend testado de ponta a ponta; o frontend compila e está no ar, falta o teste manual no browser.
 
 ---
@@ -60,7 +62,7 @@ Se algum passo depois da reserva falhar (processamento, verificação, publicaç
 
 | Ficheiro | Conteúdo |
 |---|---|
-| [`videoProcessing/concat.py`](concat.py) | Núcleo do UC5 (leitura com `ffprobe`, validações, compatibilidade, comando FFmpeg, verificação do resultado), `ConcatService` (fila e tarefas) e as rotas internas `/video/concat`. |
+| [`videoProcessing/use_cases/concat.py`](use_cases/concat.py) | Núcleo do UC5 (leitura com `ffprobe`, validações, compatibilidade, comando FFmpeg, verificação do resultado), `ConcatService` (fila e tarefas) e as rotas internas `/video/concat`. |
 | [`videoProcessing/tests/test_concat.py`](tests/test_concat.py) | 20 testes automáticos (validação, serviço com hooks falsos, integração). |
 | [`videoProcessing/tests/manual_concat.py`](tests/manual_concat.py) | Script para testar o serviço real sem gateway (faz o papel do gateway). |
 | [`apiGateway/routes/videoConcat.js`](../apiGateway/routes/videoConcat.js) | Rotas públicas do UC5 e rota da biblioteca. |

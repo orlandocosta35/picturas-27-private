@@ -17,11 +17,11 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from flask import Flask
-from concat import (ConcatError, ConcatService, create_concat_blueprint, describe,
+from use_cases.concat import (ConcatError, ConcatService, create_concat_blueprint, describe,
                     inspect_source, prepare_inputs, probe_input, write_list_file)
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 import functools
-from trim import TrimContext, TrimError, TrimHooks
+from utils.common import VideoContext, VideoError, VideoHooks
 
 
 def make_video(path, seconds=2, size="160x96", audio=True, rate=12, variable=False,
@@ -52,7 +52,7 @@ class Ledger:
     def accept(self, context, task):
         with self.lock:
             if self.reject or (context.profile == "free" and self.reserved):
-                raise TrimError("ACTIVE_TASK_LIMIT", "Já existe uma tarefa de vídeo ativa.", 409)
+                raise VideoError("ACTIVE_TASK_LIMIT", "Já existe uma tarefa de vídeo ativa.", 409)
             self.reserved.add(task["id"])
 
     def complete(self, context, task, output):
@@ -184,8 +184,8 @@ class ServiceTests(Fixtures):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.ledger = Ledger()
-        self.context = TrimContext("alice", "free", "project-a")
-        self.service = ConcatService(self.temp.name, TrimHooks(
+        self.context = VideoContext("alice", "free", "project-a")
+        self.service = ConcatService(self.temp.name, VideoHooks(
             self.ledger.accept, self.ledger.complete, self.ledger.abort))
         app = Flask(__name__)
         app.config["TESTING"] = True
@@ -245,7 +245,7 @@ class ServiceTests(Fixtures):
         [item] = response.get_json()
         self.assertEqual((item["name"], item["width"], item["hasAudio"]), ("a.mp4", 160, True))
         self.assertEqual(self.library_calls, [self.context])
-        self.context = TrimContext("alice", "anonymous", "project-a")
+        self.context = VideoContext("alice", "anonymous", "project-a")
         self.assertEqual(self.client.get("/video/concat/library").status_code, 403)
 
     def test_invalid_selection_creates_no_task_nor_reservation(self):
@@ -278,7 +278,7 @@ class ServiceTests(Fixtures):
 
     def slow(self):
         # A cópia é quase instantânea; um processo lento deixa a tarefa ativa.
-        patcher = patch("concat.build_concat_command", return_value=["sleep", "30"])
+        patcher = patch("use_cases.concat.build_concat_command", return_value=["sleep", "30"])
         patcher.start()
         self.addCleanup(patcher.stop)
 
@@ -317,8 +317,8 @@ class ServiceTests(Fixtures):
 
     def test_failure_during_publication_marks_failed_and_releases(self):
         def broken_complete(context, task, output):
-            raise TrimError("LIBRARY_UNAVAILABLE", "Biblioteca indisponível.", 503)
-        self.service.hooks = TrimHooks(self.ledger.accept, broken_complete, self.ledger.abort)
+            raise VideoError("LIBRARY_UNAVAILABLE", "Biblioteca indisponível.", 503)
+        self.service.hooks = VideoHooks(self.ledger.accept, broken_complete, self.ledger.abort)
         task = self.wait(self.submit(self.a, self.b).get_json()["id"])
         self.assertEqual((task["status"], task["errorCode"]), ("failed", "LIBRARY_UNAVAILABLE"))
         self.assertEqual(self.ledger.aborted, {task["id"]})
@@ -327,7 +327,7 @@ class ServiceTests(Fixtures):
     def test_other_user_or_project_cannot_access_tasks(self):
         task_id = self.submit(self.a, self.b).get_json()["id"]
         self.wait(task_id)
-        for other in (TrimContext("bob", "free", "project-a"), TrimContext("alice", "free", "project-b")):
+        for other in (VideoContext("bob", "free", "project-a"), VideoContext("alice", "free", "project-b")):
             self.context = other
             with self.subTest(other=other):
                 self.assertEqual(self.client.get(f"/video/concat/tasks/{task_id}").status_code, 404)
@@ -340,7 +340,7 @@ class ServiceTests(Fixtures):
         (directory / "task.json").write_text(json.dumps({
             "id": directory.name, "status": "processing", "progress": 40,
             "outputFormat": "mp4", "_userId": "alice", "_projectId": "project-a", "_profile": "free"}))
-        restarted = ConcatService(self.temp.name, TrimHooks(
+        restarted = ConcatService(self.temp.name, VideoHooks(
             self.ledger.accept, self.ledger.complete, self.ledger.abort))
         try:
             task = json.loads((directory / "task.json").read_text())
@@ -358,7 +358,7 @@ class IntegrationTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.environment = patch.dict(os.environ, {"VIDEO_INTERNAL_SECRET": "test-internal-key"})
         self.environment.start()
-        from trim_integration import register_concat
+        from use_cases.concat_integration import register_concat
         self.app = Flask(__name__)
         self.service = register_concat(self.app, self.directory.name)
         self.client = self.app.test_client()
@@ -390,10 +390,10 @@ class IntegrationTests(unittest.TestCase):
             return io.BytesIO(b'{"ok":true}')
         task = {"id": "c" * 36, "outputFormat": "mp4", "downloadName": "a_concatenado.mp4",
                 "result": {"duration": 5}}
-        context = TrimContext("a" * 24, "free", "b" * 24)
-        with patch("trim_integration.urlopen", side_effect=respond):
+        context = VideoContext("a" * 24, "free", "b" * 24)
+        with patch("utils.integration.urlopen", side_effect=respond):
             self.service.hooks.complete(context, task, Path("unused"))
-        self.assertEqual(json.loads(calls[0].data)["kind"], "concat")
+        self.assertEqual(json.loads(calls[0].data)["processor"], "concat")
         self.assertTrue(calls[1].full_url.endswith("/commit"))
 
 

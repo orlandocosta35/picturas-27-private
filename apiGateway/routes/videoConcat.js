@@ -5,8 +5,14 @@ const router = require("express").Router();
 const axios = require("axios");
 const FormData = require("form-data");
 const auth = require("../auth/auth");
-const { agent, projects, sourceName, internal, context, failure } =
-  require("./videoTrim").shared;
+const {
+  context,
+  internal,
+  sourceName,
+  failure,
+  agent,
+  projects,
+} = require("./videoAccess");
 const video = "http://video_processing:12000/video/concat";
 const AUDIENCE = "video-concat";
 // Upper bound for any profile (RN3); the per-profile limit is enforced by the service.

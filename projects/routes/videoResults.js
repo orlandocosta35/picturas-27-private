@@ -4,11 +4,6 @@ const fs = require("fs");
 const path = require("path");
 const Project = require("../models/project");
 const mime = { mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm" };
-// Each video operation keeps its tasks in its own folder of the video_data volume.
-const resultRoots = {
-  trim: process.env.VIDEO_RESULTS_ROOT || "/video-tasks/tasks/trim",
-  concat: process.env.VIDEO_CONCAT_RESULTS_ROOT || "/video-tasks/tasks/concat",
-};
 router.use((req, res, next) => {
   const secret = process.env.VIDEO_INTERNAL_SECRET;
   const a = Buffer.from(req.get("Authorization") || ""),
@@ -89,12 +84,12 @@ router.get("/:user/:project/results/:task/download", (req, res) => {
 });
 router.post("/:user/:project/results/:task", async (req, res, next) => {
   const { task, user, project } = req.params;
-  const { format, name, metadata, kind = "trim" } = req.body;
+  const { format, name, metadata, processor = "trim" } = req.body;
   if (
     !/^[a-f0-9-]{36}$/i.test(task) ||
     !mime[format] ||
-    typeof name !== "string" ||
-    !Object.hasOwn(resultRoots, kind)
+    !["trim", "audio", "concat"].includes(processor) ||
+    typeof name !== "string"
   )
     return res.sendStatus(400);
   const existing = req.videoProject.videoResults.find((r) => r.id === task);
@@ -110,7 +105,19 @@ router.post("/:user/:project/results/:task", async (req, res, next) => {
   const temporary = `${destination}.${crypto.randomUUID()}.tmp`;
   try {
     await fs.promises.mkdir(directory, { recursive: true });
-    const source = path.join(resultRoots[kind], task, `result.${format}`);
+    // Each operation keeps its tasks in its own folder of the video_data volume.
+    const source = path.join(
+      processor === "trim"
+        ? process.env.VIDEO_RESULTS_ROOT || "/video-tasks/tasks/trim"
+        : path.join(
+            path.dirname(
+              process.env.VIDEO_RESULTS_ROOT || "/video-tasks/tasks/trim",
+            ),
+            processor,
+          ),
+      task,
+      `result.${format}`,
+    );
     await fs.promises.copyFile(source, temporary);
     await fs.promises.rename(temporary, destination);
     const updated = await Project.updateOne(

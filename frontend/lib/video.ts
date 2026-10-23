@@ -209,6 +209,140 @@ export async function downloadVideoResult(
   ).data;
 }
 
+export type AudioOperation = "volume" | "remove" | "overlay";
+export type AudioMetadata = {
+  video: {
+    duration: number;
+    has_audio: boolean;
+    audioDuration: number;
+    width: number;
+    height: number;
+    fps: number;
+  };
+  audio: { duration: number; format: string } | null;
+};
+export type AudioParameters = {
+  operation: AudioOperation;
+  volume: number;
+  originalVolume: number;
+  overlayMode: "mix" | "replace";
+  startSeconds: number;
+  fadeIn: number;
+  fadeOut: number;
+  shortPolicy: "repeat" | "silence" | "";
+};
+export type AudioPlan = {
+  status: "confirmation_required" | "choice_required";
+  warnings?: { code: string; message: string }[];
+  message?: string;
+  effectiveAudioDuration?: number;
+};
+export type AudioTask = Omit<VideoResizeTask, "status"> & {
+  status: VideoResizeTask["status"] | "cancelled";
+  operation: AudioOperation;
+};
+function audioBody(
+  params: Partial<AudioParameters>,
+  file?: File,
+  confirmed = false,
+) {
+  const body = new FormData();
+  Object.entries(params).forEach(([key, value]) =>
+    body.append(key, String(value)),
+  );
+  if (file) body.append("audio", file);
+  if (confirmed)
+    for (const key of [
+      "confirmRemove",
+      "confirmTrim",
+      "confirmAmplification",
+      "confirmZero",
+    ])
+      body.append(key, "true");
+  return body;
+}
+export async function inspectVideoAudio(
+  user: string,
+  project: string,
+  token: string,
+  file?: File,
+  sourceResultId?: string,
+) {
+  const path = `${trimPath(user, project)}/audio`;
+  const config = {
+    headers: credentials(token),
+    params: sourceResultId ? { sourceResultId } : undefined,
+  };
+  return file
+    ? (
+        await api.post<AudioMetadata>(
+          `${path}/inspect`,
+          audioBody({}, file),
+          config,
+        )
+      ).data
+    : (await api.get<AudioMetadata>(`${path}/metadata`, config)).data;
+}
+export async function createVideoAudioTask(
+  user: string,
+  project: string,
+  token: string,
+  params: AudioParameters,
+  file?: File,
+  confirmed = false,
+  sourceResultId?: string,
+) {
+  const body = audioBody(
+    params,
+    params.operation === "overlay" ? file : undefined,
+    confirmed,
+  );
+  if (sourceResultId) body.append("sourceResultId", sourceResultId);
+  return (
+    await api.post<AudioTask | AudioPlan>(
+      `${trimPath(user, project)}/audio`,
+      body,
+      { headers: credentials(token) },
+    )
+  ).data;
+}
+export async function listVideoAudioTasks(
+  user: string,
+  project: string,
+  token: string,
+) {
+  return (
+    await api.get<AudioTask[]>(`${trimPath(user, project)}/audio/tasks`, {
+      headers: credentials(token),
+    })
+  ).data;
+}
+export async function getVideoAudioTask(
+  user: string,
+  project: string,
+  token: string,
+  id: string,
+) {
+  return (
+    await api.get<AudioTask>(`${trimPath(user, project)}/audio/tasks/${id}`, {
+      headers: credentials(token),
+    })
+  ).data;
+}
+export async function cancelVideoAudioTask(
+  user: string,
+  project: string,
+  token: string,
+  id: string,
+) {
+  return (
+    await api.delete<AudioTask>(
+      `${trimPath(user, project)}/audio/tasks/${id}`,
+      { headers: credentials(token) },
+    )
+  ).data;
+}
+
 // UC-VID-005: concatenation.
 // One field of the RN7 compatibility check, in the order the service compares them.
 export type CompatibilityField = { field: string; label: string; value: string };

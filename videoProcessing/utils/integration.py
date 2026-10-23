@@ -1,11 +1,6 @@
-"""Trusted gateway context and idempotent adapters for users/projects.
-
-Shared by trim (UC2) and concat (UC5); each uses its own JWT audience and its
-own results folder, which projects reads when publishing (field "kind").
-"""
+"""Trusted gateway context and shared quota/library adapters."""
 import atexit
 import base64
-from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import hmac
 import json
@@ -15,49 +10,12 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from flask import request
-from concat import ConcatError, ConcatService, create_concat_blueprint, describe, inspect_source
-from trim import TrimContext, TrimError, TrimHooks, TrimService, create_trim_blueprint
+from .common import VideoContext, VideoError, VideoHooks
 
-
-def register_trim(app, task_root):
-    hooks, context, _ = _integration('video-trim', 'trim')
-    service = TrimService(task_root, hooks)
-    app.register_blueprint(create_trim_blueprint(service, context))
-    app.extensions['video_trim'] = service
-    atexit.register(service.close)
-    return service
-
-
-def register_concat(app, task_root):
-    hooks, context, call = _integration('video-concat', 'concat')
-    projects = os.environ.get('VIDEO_PROJECTS_URL', 'https://projects:9001/internal/video')
-    auth = {'Authorization': f'Bearer {os.environ["VIDEO_INTERNAL_SECRET"]}'}
-
-    def library(ctx):
-        # projects lists only this user's video projects and /source refuses others.
-        items = call(f'{projects}/{ctx.user_id}/library', method='GET')
-
-        def with_metadata(item):
-            try:
-                info = inspect_source(f'{projects}/{ctx.user_id}/{item["projectId"]}/source', auth)
-                return {**item, **describe(info)}
-            except ConcatError as error:
-                return {**item, 'error': error.message, 'code': error.code}
-
-        with ThreadPoolExecutor(max_workers=4) as pool:
-            return list(pool.map(with_metadata, items))
-
-    service = ConcatService(task_root, hooks)
-    app.register_blueprint(create_concat_blueprint(service, context, library))
-    app.extensions['video_concat'] = service
-    atexit.register(service.close)
-    return service
-
-
-def _integration(audience, kind):
+def register_video_service(app, task_root, service_type, blueprint_factory, operation):
     secret = os.environ.get('VIDEO_INTERNAL_SECRET', '')
     if not secret:
-        raise RuntimeError(f'VIDEO_INTERNAL_SECRET is required for {kind} integration')
+        raise RuntimeError('VIDEO_INTERNAL_SECRET is required for video integration')
     users = os.environ.get('VIDEO_USERS_URL', 'https://users:10001')
     projects = os.environ.get('VIDEO_PROJECTS_URL', 'https://projects:9001/internal/video')
     # Existing internal services use self-signed TLS certificates.
@@ -75,11 +33,11 @@ def _integration(audience, kind):
                 details = json.loads(error.read(65536))
             except (ValueError, OSError):
                 details = {}
-            raise TrimError(details.get('code', 'INTEGRATION_FAILED'),
+            raise VideoError(details.get('code', 'INTEGRATION_FAILED'),
                             details.get('error', 'Não foi possível guardar o resultado ou atualizar a quota.'),
                             error.code) from None
         except (URLError, TimeoutError, OSError):
-            raise TrimError('INTEGRATION_UNAVAILABLE', 'Serviço de projetos ou quota indisponível.', 503) from None
+            raise VideoError('INTEGRATION_UNAVAILABLE', 'Serviço de projetos ou quota indisponível.', 503) from None
 
     def quota(ctx, task, action):
         return call(f'{users}/internal/video-quota/{ctx.user_id}/{task["id"]}/{action}',
@@ -92,8 +50,9 @@ def _integration(audience, kind):
         quota(ctx, task, 'reserve')
 
     def complete(ctx, task, output):
-        call(result_url(ctx, task), {'kind': kind, 'format': task['outputFormat'],
-             'name': task['downloadName'], 'metadata': task['result']})
+        call(result_url(ctx, task), {'format': task['outputFormat'],
+             'name': task['downloadName'], 'processor': operation,
+             'metadata': {**task['result'], 'processor': operation, 'operation': task.get('operation', operation)}})
         quota(ctx, task, 'commit')
 
     def abort(ctx, task):
@@ -101,12 +60,12 @@ def _integration(audience, kind):
         errors = []
         try:
             call(result_url(ctx, task), method='DELETE')
-        except TrimError as error:
+        except VideoError as error:
             if error.status != 404:
                 errors.append(error)
         try:
             quota(ctx, task, 'release')
-        except TrimError as error:
+        except VideoError as error:
             errors.append(error)
         if errors:
             raise errors[0]
@@ -119,13 +78,17 @@ def _integration(audience, kind):
             metadata, claims = json.loads(decode(header)), json.loads(decode(payload))
             expected = hmac.new(secret.encode(), f'{header}.{payload}'.encode(), hashlib.sha256).digest()
             if (metadata.get('alg') != 'HS256' or not hmac.compare_digest(expected, decode(signature))
-                    or claims['exp'] <= time.time() or claims.get('aud') != audience):
+                    or claims['exp'] <= time.time() or claims.get('aud') != f'video-{operation}'):
                 raise ValueError
             import re
             if not all(re.fullmatch(r'[a-fA-F0-9]{24}', claims[key]) for key in ('user_id', 'project_id')):
                 raise ValueError
-            return TrimContext(claims['user_id'], claims['profile'], claims['project_id'])
+            return VideoContext(claims['user_id'], claims['profile'], claims['project_id'])
         except (ValueError, KeyError, TypeError, AttributeError):
-            raise TrimError('AUTHENTICATION_REQUIRED', 'Credenciais de vídeo inválidas ou expiradas.', 401) from None
+            raise VideoError('AUTHENTICATION_REQUIRED', 'Credenciais de vídeo inválidas ou expiradas.', 401) from None
 
-    return TrimHooks(accept, complete, abort), context, call
+    service = service_type(task_root, VideoHooks(accept, complete, abort))
+    app.register_blueprint(blueprint_factory(service, context))
+    app.extensions[f'video_{operation}'] = service
+    atexit.register(service.close)
+    return service

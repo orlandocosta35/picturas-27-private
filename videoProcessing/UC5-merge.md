@@ -1,6 +1,7 @@
 # UC5 — Registo de alterações e guia de merge com o `main`
 
 **Data:** 2026-10-23
+**Estado:** ✅ merge do `origin/main` no `uc-5` feito e verificado (ver secção 6).
 **Ramo do UC5:** `uc-5` (local). Último commit: `d532a2e`; o resto está por commitar.
 **Ponto de partida comum com o `main`:** `150668a` (merge do PR #4).
 **O que entrou entretanto no `main`:** `c7da3f0` e `b45a3c1`, o UC3 (áudio), que **reorganizou o serviço de vídeo e o gateway**.
@@ -210,3 +211,33 @@ Se algo correr mal antes do passo 4: `git merge --abort` volta ao estado do pass
 - O UC5 acrescenta a rota interna `GET /internal/video/:user/library` ao `projects`.
 - O UC5 acrescenta uma operação ao `video-editor.tsx` e funções ao fim do `lib/video.ts`. Não altera as do UC2 nem as do UC3.
 - Depois do merge, os ficheiros `videoProcessing/trim.py` e `trim_integration.py` **não voltam** a existir (o merge mantém a remoção feita no `main`).
+
+---
+
+## 6. Resultado do merge (2026-10-23)
+
+O merge foi feito como descrito na secção 3, sem alterar nenhum ficheiro do UC2 nem do UC3.
+
+**Diferença final em relação ao `main`:** só acrescenta o UC5. Altera 4 linhas em ficheiros partilhados:
+- `apiGateway/routes/projects.js`: `router.use(require("./videoConcat"))`;
+- `projects/routes/videoResults.js`: `"concat"` na lista de `processor`, a pasta de origem passa a `.../tasks/<processor>` e a rota `GET /:user/library`;
+- `videoProcessing/server.py`: `register_concat`;
+- `frontend/components/video/video-editor.tsx`: a operação `concat` e o botão.
+
+Os ficheiros `use_cases/trim*.py`, `use_cases/audio*.py`, `utils/*`, `videoTrim.js`, `videoAudio.js`, `videoAccess.js`, `video-trim-editor.tsx`, `video-audio-editor.tsx`, o `Dockerfile` e os testes do UC2 e do UC3 ficaram **iguais aos do `main`**.
+
+Um ajuste ao UC5 que não estava previsto na secção 3: o `probe_json` do `main` lança `VideoError`. O `_ffprobe` do concat converte-o em `ConcatError`, para continuar a indicar a posição do vídeo ilegível.
+
+**Verificações feitas:**
+
+| Verificação | Resultado |
+|---|---|
+| Testes automáticos (UC2, UC3 e UC5): `python -m unittest discover -s tests` | 65 testes, todos a passar |
+| TypeScript do frontend | 0 erros |
+| Build de todas as imagens | OK |
+| Rotas do UC2 e do UC3 pelo gateway (`trim/tasks`, `audio/tasks`, `results`) | 200 |
+| Recorte real (UC2) pelo gateway | Concluído e publicado com `processor: trim` |
+| Biblioteca do UC5 com metadados | OK |
+| Concatenação real (UC5) pelo gateway | Concluída (7 s), publicada com `processor: concat`, download 200 |
+
+**Falta:** testar o UC3 e o UC5 no browser, e fazer `git push origin uc-5` para atualizar o PR.
