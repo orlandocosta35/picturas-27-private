@@ -27,11 +27,8 @@ import { Input } from "../ui/input";
 import { useEffect, useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useSession } from "@/providers/session-provider";
-import { Project } from "@/lib/projects";
+import { Project, fetchProject } from "@/lib/projects";
 import { getErrorMessage } from "@/lib/error-messages";
-import { useQueryClient } from "@tanstack/react-query";
-import type { SingleProject } from "@/lib/projects";
-import { useSearchParams } from "next/navigation";
 
 
 export default function ProjectItem({ p }: { p: Project }) {
@@ -44,16 +41,7 @@ export default function ProjectItem({ p }: { p: Project }) {
   const [newName, setNewName] = useState<string>(p.name);
 
   const session = useSession();
-  const qc = useQueryClient();
-  const searchParams = useSearchParams();
-
-  const ownerId = searchParams.get("owner") ?? session.user._id;
-  const shareId = searchParams.get("share") ?? undefined;
-
-  const projectKey = ["project", session.user._id, p._id, session.token, ownerId, shareId];
-
-  const cached = qc.getQueryData<SingleProject>(projectKey);
-  const projectVersion = cached?.version; // versão REAL
+  const [submitting, setSubmitting] = useState(false);
 
   const deleteProject = useDeleteProject(
     session.user._id,
@@ -152,38 +140,41 @@ export default function ProjectItem({ p }: { p: Project }) {
           )}
           <DialogFooter>
             <Button
-              onClick={() => {
-                if (!projectVersion) {
-                  toast({
-                    title: "Não foi possível obter a versão do projeto",
-                    description: "Abre o projeto primeiro (ou aguarda carregar) e tenta novamente.",
-                    variant: "destructive",
-                  });
-                  return;
+              disabled={submitting || (option === "rename" && !newName.trim())}
+              onClick={async () => {
+                setSubmitting(true);
+                let mutationStarted = false;
+                try {
+                  const current = await fetchProject(session.user._id, p._id, session.token);
+                  const projectVersion = current.version;
+                  if (!Number.isInteger(projectVersion) || projectVersion < 0) {
+                    throw new Error("Invalid project version");
+                  }
+                  mutationStarted = true;
+                  if (option === "rename") {
+                    await updateProject.mutateAsync({ name: newName, projectVersion });
+                  } else {
+                    await deleteProject.mutateAsync({ projectVersion });
+                    if (path.includes(`/dashboard/${p._id}`)) router.push("/dashboard");
+                    toast({ title: "Project deleted successfully." });
+                  }
+                  setOpen(false);
+                } catch {
+                  // Mutation failures are reported by the existing effect.
+                  if (!mutationStarted) {
+                    toast({
+                      title: "Não foi possível concluir a operação",
+                      description: "Verifica a ligação e tenta novamente.",
+                      variant: "destructive",
+                    });
+                  }
+                } finally {
+                  setSubmitting(false);
                 }
-                if (option === "rename")
-                  updateProject.mutate({
-                    name: newName,
-                    projectVersion: p.version,
-                  });
-                else {
-                  router.push("/dashboard");
-                  deleteProject.mutate(
-                    { projectVersion },
-                    {
-                      onSuccess: () => {
-                        toast({
-                          title: "Project deleted successfully.",
-                        });
-                      },
-                    },
-                  );
-                }
-                setOpen(false);
               }}
               variant={option === "rename" ? "default" : "destructive"}
             >
-              {option === "rename" ? "Save" : "Permanently Delete"}
+              {submitting ? "A aguardar…" : option === "rename" ? "Save" : "Permanently Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

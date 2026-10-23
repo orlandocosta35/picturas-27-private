@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Check,
   Film,
   LoaderCircle,
   Play,
@@ -9,6 +8,7 @@ import {
   X,
 } from "lucide-react";
 import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -21,6 +21,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   cancelVideoResizeTask,
   createVideoResizeTask,
@@ -114,6 +124,7 @@ export function VideoEditor({
   const [resizeMode, setResizeMode] = useState<ResizeMode>("contain");
   const [outputFormat, setOutputFormat] = useState<VideoOutputFormat>("mp4");
   const [customResolution, setCustomResolution] = useState(false);
+  const [upscaleConfirmationOpen, setUpscaleConfirmationOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Non-blocking warnings from the service, e.g. ignored audio tracks.
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -122,6 +133,7 @@ export function VideoEditor({
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const communicationFailuresRef = useRef(0);
   const updateSession = useUpdateSession();
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     return () => {
@@ -197,7 +209,7 @@ export function VideoEditor({
     setHeight(nextHeight);
   };
 
-  const handleProcess = () => {
+  const handleProcess = (upscaleConfirmed = false) => {
     if (!file || !metadata) return;
     if (operation === "trim" && endSeconds <= startSeconds) {
       setError("O fim do recorte deve ser posterior ao início.");
@@ -234,12 +246,9 @@ export function VideoEditor({
 
     const isUpscaling =
       width > metadata.width || height > metadata.height;
-    if (
-      isUpscaling &&
-      !window.confirm(
-        "A resolução escolhida é superior à original. Esta operação não recupera detalhe e pode aumentar o tamanho do ficheiro. Queres continuar?",
-      )
-    ) {
+    if (isUpscaling && !upscaleConfirmed) {
+      setError(null);
+      setUpscaleConfirmationOpen(true);
       return;
     }
 
@@ -274,6 +283,13 @@ export function VideoEditor({
               setDownloadUrl(URL.createObjectURL(result));
               setTaskId(null);
               updateSession.mutate({ userId, token });
+              for (const queryKey of [
+                ["project", userId, projectId],
+                ["projectResults", userId, projectId],
+                ["projects", userId],
+              ]) {
+                void queryClient.invalidateQueries({ queryKey });
+              }
             } else if (current.status === "failed" || current.status === "cancelled") {
               if (progressTimerRef.current !== null) window.clearInterval(progressTimerRef.current);
               setTaskId(null);
@@ -639,17 +655,15 @@ export function VideoEditor({
 
               <Button
                 className="w-full gap-2"
-                onClick={handleProcess}
+                onClick={() => handleProcess()}
                 disabled={!metadata || taskId !== null || progress !== null && progress < 100}
               >
                 {progress !== null && progress < 100 ? (
                   <LoaderCircle className="size-4 animate-spin" />
-                ) : progress === 100 ? (
-                  <Check className="size-4" />
                 ) : (
                   <Play className="size-4" />
                 )}
-                {progress === 100 ? "Concluído" : "Processar vídeo"}
+                {taskId !== null ? "A processar..." : "Processar vídeo"}
               </Button>
               {taskId && progress !== null && progress < 100 && (
                 <Button
@@ -698,6 +712,23 @@ export function VideoEditor({
     <div className="flex flex-col gap-6">
       <VideoOperationTabs value={operation} onChange={setOperation} />
       {screen}
+      <AlertDialog open={upscaleConfirmationOpen} onOpenChange={setUpscaleConfirmationOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Aumentar a resolução do vídeo?</AlertDialogTitle>
+            <AlertDialogDescription>
+              A resolução escolhida é superior à original. Esta operação não
+              recupera detalhe e pode aumentar o tamanho do ficheiro.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleProcess(true)}>
+              Continuar processamento
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
