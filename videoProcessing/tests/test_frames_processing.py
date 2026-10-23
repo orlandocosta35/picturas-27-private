@@ -53,8 +53,9 @@ class FramesProcessingTests(unittest.TestCase):
         )
         destination = self.root / "result.zip"
         result = process_frames(self.source, destination, plan, self.info)
-        self.assertEqual(result["frameCount"], 3)
-        self.assertEqual(len(result["preview"]), 3)
+        # The 1 s video at 4 fps has no frame at 1.0 s, so only 0 and 0.5 s (RN7).
+        self.assertEqual(result["frameCount"], 2)
+        self.assertEqual(len(result["preview"]), 2)
         with zipfile.ZipFile(destination) as archive:
             names = archive.namelist()
             self.assertEqual(names, sorted(names))

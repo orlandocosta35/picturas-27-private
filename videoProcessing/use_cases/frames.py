@@ -19,7 +19,7 @@ from werkzeug.exceptions import RequestEntityTooLarge
 from werkzeug.utils import secure_filename
 from utils.common import VideoError, VideoInfo
 from utils.common import EPSILON, VideoContext, profile_limits, utc_now
-from utils.media import probe_video
+from utils.media import probe_json, probe_video
 from utils.tasks import VideoTaskService, VideoJob
 from use_cases.frames_domain import FramePlan, frame_instants, frame_name
 from use_cases.frames_domain import plan_frames
@@ -79,6 +79,14 @@ def _run_frame_command(command: list[str], timeout: float) -> None:
                          stderr=details) from None
 
 
+def last_frame_time(source: Path, start_time: float = 0) -> float:
+    """Timestamp of the last video frame (reads packet headers, no decoding)."""
+    data = probe_json(source, ["-select_streams", "v:0", "-show_entries", "packet=pts_time"])
+    times = [float(p["pts_time"]) for p in data.get("packets", [])
+             if p.get("pts_time") not in (None, "N/A")]
+    return max(times) - start_time if times else 0.0
+
+
 def extract_frames(
     source: Path,
     output_directory: Path,
@@ -99,6 +107,11 @@ def extract_frames(
     output_directory = Path(output_directory)
     output_directory.mkdir(parents=True, exist_ok=True)
     instants = frame_instants(plan, info.fps)
+    # RN7: after the last frame there is no "frame at or after" the instant; skip it.
+    last = last_frame_time(source, info.start_time)
+    instants = [t for t in instants if t <= last + EPSILON]
+    if not instants:
+        raise VideoError("NO_FRAMES", "The interval and frequency produce no frames.")
     extension = image_extension(plan.image_format)
     frames: list[Path] = []
     temporary = Path(tempfile.mkdtemp(prefix="frames-", dir=output_directory))
