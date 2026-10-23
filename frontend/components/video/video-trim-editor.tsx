@@ -11,6 +11,7 @@ import {
   cancelVideoTrimTask,
   createVideoTrimTask,
   downloadVideoResult,
+  getVideoTrimKeyframes,
   getVideoTrimTask,
   listVideoResults,
   listVideoTrimTasks,
@@ -34,6 +35,15 @@ function parseTime(value: string) {
   if (!/^\d+:\d{2}(?:\.\d{1,3})?$/.test(value)) return NaN;
   const [minutes, seconds] = value.split(":").map(Number);
   return seconds < 60 ? minutes * 60 + seconds : NaN;
+}
+// Nearest fast-mode cut point. A cut cannot start at the end or end at 0.
+function snap(value: number, points: number[], which: "start" | "end") {
+  const options = which === "start" ? points.slice(0, -1) : points.slice(1);
+  return options.reduce(
+    (best, point) =>
+      Math.abs(point - value) < Math.abs(best - value) ? point : best,
+    options[0] ?? value,
+  );
 }
 const active = (task: VideoTrimTask | null) =>
   task?.status === "queued" || task?.status === "processing";
@@ -76,17 +86,32 @@ export function VideoTrimEditor({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [keyframes, setKeyframes] = useState<number[] | null>(null);
+  const [cutDuration, setCutDuration] = useState(0);
+  const [keyframesError, setKeyframesError] = useState<string | null>(null);
   const updateSession = useUpdateSession();
   const refreshSession = useRef(updateSession.mutate);
   refreshSession.current = updateSession.mutate;
   const running = active(task);
-  const first = parseTime(start),
-    last = parseTime(end);
+  // In fast mode the cut can only use keyframes, so the controls snap to them.
+  const points = mode === "fast" && keyframes?.length ? keyframes : null;
+  const typedFirst = parseTime(start),
+    typedLast = parseTime(end);
+  // Send the exact keyframe time; the text box rounds it to milliseconds.
+  const first =
+    points && Number.isFinite(typedFirst)
+      ? snap(typedFirst, points, "start")
+      : typedFirst;
+  const last =
+    points && Number.isFinite(typedLast)
+      ? snap(typedLast, points, "end")
+      : typedLast;
+  const limit = Math.max(duration, cutDuration);
   const valid =
     Number.isFinite(first) &&
     Number.isFinite(last) &&
     first >= 0 &&
-    last <= duration + 0.001 &&
+    last <= limit + 0.001 &&
     last - first >= 1;
 
   const samples = history
@@ -148,6 +173,40 @@ export function VideoTrimEditor({
       disposed = true;
     };
   }, [userId, projectId, token]);
+
+  useEffect(() => {
+    if (!userId || !projectId || !token) return;
+    let disposed = false;
+    getVideoTrimKeyframes(userId, projectId, token)
+      .then((result) => {
+        if (disposed) return;
+        setKeyframes(result.keyframes);
+        setCutDuration(result.durationSeconds);
+      })
+      .catch((e) => {
+        if (!disposed) setKeyframesError(message(e));
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [userId, projectId, token]);
+
+  // Entering fast mode (or receiving the points) moves both ends to a keyframe.
+  useEffect(() => {
+    if (mode !== "fast" || !keyframes?.length) return;
+    setStart((value) => {
+      const time = parseTime(value);
+      return Number.isFinite(time)
+        ? timeText(snap(time, keyframes, "start"))
+        : value;
+    });
+    setEnd((value) => {
+      const time = parseTime(value);
+      return Number.isFinite(time)
+        ? timeText(snap(time, keyframes, "end"))
+        : value;
+    });
+  }, [mode, keyframes]);
 
   useEffect(() => {
     if (!running || !task || !userId || !projectId || !token) return;
@@ -252,6 +311,13 @@ export function VideoTrimEditor({
       setError(message(e));
     }
   }
+  // Typed times snap to the nearest keyframe once the field loses focus.
+  function settle(which: "start" | "end") {
+    if (!points) return;
+    const time = parseTime(which === "start" ? start : end);
+    if (Number.isFinite(time))
+      change(which, timeText(snap(time, points, which)));
+  }
   function change(which: "start" | "end", value: string) {
     setPlan(null);
     setNotice(null);
@@ -336,6 +402,7 @@ export function VideoTrimEditor({
                         id="trim-start-time"
                         value={start}
                         onChange={(e) => change("start", e.target.value)}
+                        onBlur={() => settle("start")}
                       />
                     </div>
                     <div>
@@ -344,6 +411,7 @@ export function VideoTrimEditor({
                         id="trim-end-time"
                         value={end}
                         onChange={(e) => change("end", e.target.value)}
+                        onBlur={() => settle("end")}
                       />
                     </div>
                   </div>
@@ -355,13 +423,17 @@ export function VideoTrimEditor({
                       id="trim-start-slider"
                       type="range"
                       min={0}
-                      max={duration}
+                      max={limit}
                       step={0.001}
                       value={Number.isFinite(first) ? first : 0}
                       className="w-full"
-                      onChange={(e) =>
-                        change("start", timeText(Number(e.target.value)))
-                      }
+                      onChange={(e) => {
+                        const time = Number(e.target.value);
+                        change(
+                          "start",
+                          timeText(points ? snap(time, points, "start") : time),
+                        );
+                      }}
                     />
                   </div>
                   <div>
@@ -372,15 +444,48 @@ export function VideoTrimEditor({
                       id="trim-end-slider"
                       type="range"
                       min={0}
-                      max={duration}
+                      max={limit}
                       step={0.001}
                       value={Number.isFinite(last) ? last : 0}
                       className="w-full"
-                      onChange={(e) =>
-                        change("end", timeText(Number(e.target.value)))
-                      }
+                      onChange={(e) => {
+                        const time = Number(e.target.value);
+                        change(
+                          "end",
+                          timeText(points ? snap(time, points, "end") : time),
+                        );
+                      }}
                     />
                   </div>
+                  {points && limit > 0 && (
+                    <div>
+                      <p className="text-sm text-muted-foreground">
+                        Pontos de corte disponíveis ({points.length})
+                      </p>
+                      <div
+                        aria-hidden
+                        className="relative mt-1 h-4 w-full rounded bg-muted"
+                      >
+                        {points.map((point) => (
+                          <span
+                            key={point}
+                            title={timeText(point)}
+                            className="absolute top-0 h-4 w-0.5 -translate-x-1/2 bg-primary"
+                            style={{ left: `${(point / limit) * 100}%` }}
+                          />
+                        ))}
+                        {valid && (
+                          <span
+                            className="absolute top-0 h-4 rounded bg-primary/30"
+                            style={{
+                              left: `${(first / limit) * 100}%`,
+                              width: `${((last - first) / limit) * 100}%`,
+                            }}
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <Label htmlFor="trim-mode">Modo</Label>
                     <select
@@ -396,9 +501,13 @@ export function VideoTrimEditor({
                       <option value="precise">Preciso</option>
                     </select>
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {mode === "fast"
-                        ? "Usa pontos de corte disponíveis. Pediremos confirmação se o intervalo mudar."
-                        : "Recodifica o intervalo para cortar com precisão ao fotograma."}
+                      {mode === "precise"
+                        ? "Recodifica o intervalo para cortar com precisão ao fotograma."
+                        : points
+                          ? "Só é possível cortar nos pontos marcados (keyframes). O início e o fim ajustam-se ao ponto mais próximo."
+                          : keyframesError
+                            ? `Não foi possível obter os pontos de corte (${keyframesError}). Pediremos confirmação se o intervalo mudar.`
+                            : "A obter os pontos de corte do vídeo…"}
                     </p>
                   </div>
                 </fieldset>

@@ -4,6 +4,7 @@ import json
 import logging
 import math
 import shutil
+import tempfile
 import uuid
 from pathlib import Path
 from flask import Blueprint, jsonify, request, send_file
@@ -27,6 +28,24 @@ def validate_interval(start, end, duration):
     return start, end
 
 
+def keyframe_points(path, info):
+    """Fast-mode cut points: every keyframe plus the end of the video."""
+    frames = _probe_json(path, ["-select_streams", "v:0", "-skip_frame", "nokey",
+                               "-show_frames", "-show_entries", "frame=best_effort_timestamp_time"])
+    points = {0.0, info.duration}
+    for frame in frames.get("frames", []):
+        value = frame.get("best_effort_timestamp_time")
+        if value is not None:
+            value = float(value) - info.start_time
+            if math.isfinite(value) and 0 <= value <= info.duration:
+                points.add(value)
+    if len(points) <= 2:
+        # An all-intra/single-GOP video can have only its first keyframe.
+        # EOF is a valid end, but it is not a valid start point.
+        LOGGER.debug("Vídeo com um único ponto inicial de corte")
+    return sorted(points)
+
+
 def plan_trim(path, start, end, mode="fast", info=None):
     if mode not in {"precise", "fast"}:
         raise TrimError("INVALID_MODE", "O modo tem de ser precise ou fast.")
@@ -37,20 +56,7 @@ def plan_trim(path, start, end, mode="fast", info=None):
     if abs(start) <= EPSILON and abs(end - info.duration) <= EPSILON:
         return {**plan, "status": "no_changes", "message": "Não há nada a recortar."}
     if mode == "fast":
-        frames = _probe_json(path, ["-select_streams", "v:0", "-skip_frame", "nokey",
-                                   "-show_frames", "-show_entries", "frame=best_effort_timestamp_time"])
-        points = {0.0, info.duration}
-        for frame in frames.get("frames", []):
-            value = frame.get("best_effort_timestamp_time")
-            if value is not None:
-                value = float(value) - info.start_time
-                if math.isfinite(value) and 0 <= value <= info.duration:
-                    points.add(value)
-        if len(points) <= 2:
-            # An all-intra/single-GOP video can have only its first keyframe.
-            # EOF is a valid end, but it is not a valid start point.
-            LOGGER.debug("Vídeo com um único ponto inicial de corte")
-        points = sorted(points)
+        points = keyframe_points(path, info)
         effective_start = points[max(0, bisect_right(points, start + EPSILON) - 1)]
         effective_end = points[max(0, bisect_right(points, end + EPSILON) - 1)]
         if effective_end - effective_start < 1 - EPSILON:
@@ -154,6 +160,25 @@ class TrimService(VideoTaskService):
                 shutil.rmtree(directory, ignore_errors=True)
 
 
+    def keyframes(self, upload, context):
+        """List the fast-mode cut points so the editor only offers those."""
+        self._context(context)
+        max_bytes, max_duration = profile_limits(context.profile)
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "input"
+            size = 0
+            with source.open("wb") as output:
+                while chunk := upload.stream.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise TrimError("INPUT_TOO_LARGE", "O vídeo excede o tamanho permitido para o perfil.", 413)
+                    output.write(chunk)
+            info = probe_video(source)
+            if info.duration > max_duration + EPSILON:
+                raise TrimError("INPUT_TOO_LONG", "O vídeo excede a duração permitida para o perfil.")
+            return {"durationSeconds": info.duration, "keyframes": keyframe_points(source, info)}
+
+
     def _build_command(self, source, output, info, task, timeout):
         return build_trim_command(source, output, info, task, probe_timeout=timeout)
 
@@ -196,6 +221,16 @@ def create_trim_blueprint(service, context_provider):
         task, status = service.submit(video, request.form.get("startSeconds"),
                                       request.form.get("endSeconds"), request.form.get("mode", "fast"), caller)
         return jsonify(task), status
+
+    @blueprint.post("/keyframes")
+    def keyframes():
+        caller = context()
+        max_bytes, _ = profile_limits(caller.profile)
+        request.max_content_length = max_bytes + 131072
+        video = request.files.get("video")
+        if video is None:
+            raise TrimError("MISSING_VIDEO", "É necessário enviar um vídeo.")
+        return jsonify(service.keyframes(video, caller))
 
     @blueprint.get("/tasks")
     def list_tasks():
