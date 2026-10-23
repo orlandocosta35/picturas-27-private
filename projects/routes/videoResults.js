@@ -12,6 +12,27 @@ router.use((req, res, next) => {
     return res.sendStatus(401);
   next();
 });
+// UC5 library: the original video of each of the user's video projects.
+// Declared before the "/:user/:project" middleware so "library" is not read as an ID.
+router.get("/:user/library", async (req, res, next) => {
+  if (!/^[a-f0-9]{24}$/i.test(req.params.user)) return res.sendStatus(400);
+  try {
+    const projects = await Project.find(
+      { user_id: req.params.user, type: "video", video: { $ne: null } },
+      { name: 1, "video.originalName": 1, "video.mimeType": 1 },
+    ).sort({ _id: 1 });
+    res.json(
+      projects.map((p) => ({
+        projectId: p._id,
+        projectName: p.name,
+        name: p.video.originalName,
+        mimeType: p.video.mimeType,
+      })),
+    );
+  } catch (e) {
+    next(e);
+  }
+});
 router.use("/:user/:project", async (req, res, next) => {
   if (
     ![req.params.user, req.params.project].every((v) =>
@@ -67,7 +88,7 @@ router.post("/:user/:project/results/:task", async (req, res, next) => {
   if (
     !/^[a-f0-9-]{36}$/i.test(task) ||
     !mime[format] ||
-    !["trim", "audio"].includes(processor) ||
+    !["trim", "audio", "concat"].includes(processor) ||
     typeof name !== "string"
   )
     return res.sendStatus(400);
@@ -84,6 +105,7 @@ router.post("/:user/:project/results/:task", async (req, res, next) => {
   const temporary = `${destination}.${crypto.randomUUID()}.tmp`;
   try {
     await fs.promises.mkdir(directory, { recursive: true });
+    // Each operation keeps its tasks in its own folder of the video_data volume.
     const source = path.join(
       processor === "trim"
         ? process.env.VIDEO_RESULTS_ROOT || "/video-tasks/tasks/trim"
@@ -91,7 +113,7 @@ router.post("/:user/:project/results/:task", async (req, res, next) => {
             path.dirname(
               process.env.VIDEO_RESULTS_ROOT || "/video-tasks/tasks/trim",
             ),
-            "audio",
+            processor,
           ),
       task,
       `result.${format}`,

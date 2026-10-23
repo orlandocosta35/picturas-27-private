@@ -5,7 +5,6 @@ import {
   Film,
   LoaderCircle,
   Play,
-  Scissors,
   Upload,
   X,
 } from "lucide-react";
@@ -31,10 +30,11 @@ import {
   VideoOutputFormat,
 } from "@/lib/video";
 import { VideoAudioEditor } from "./video-audio-editor";
+import { VideoConcatEditor } from "./video-concat-editor";
+import { VideoOperation, VideoOperationTabs } from "./video-operation-tabs";
 import { VideoTrimEditor } from "./video-trim-editor";
 import { useUpdateSession } from "@/lib/mutations/session";
 
-type VideoOperation = "resize" | "trim" | "audio";
 type VideoMetadata = {
   duration: number;
   width: number;
@@ -409,33 +409,12 @@ export function VideoEditor({
 
           <Card>
             <CardHeader>
-              <CardTitle>Operação</CardTitle>
+              <CardTitle>Redimensionar</CardTitle>
               <CardDescription>
-                Escolhe uma operação para configurar.
+                Escolhe a resolução, o modo de ajuste e o formato de saída.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant={operation === "trim" ? "default" : "outline"}
-                  className="h-auto justify-start gap-2 py-3"
-                  onClick={() => setOperation("trim")}
-                >
-                  <Scissors className="size-4" />
-                  Recortar
-                </Button>
-                <Button
-                  variant={operation === "resize" ? "default" : "outline"}
-                  className="h-auto justify-start gap-2 py-3"
-                  onClick={() => setOperation("resize")}
-                >
-                  <Film className="size-4" />
-                  Redimensionar
-                </Button>
-              </div>
-
-              <Button variant="outline" onClick={() => setOperation("audio")}>Gerir áudio</Button>
-
               {operation === "trim" ? (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
@@ -688,8 +667,23 @@ export function VideoEditor({
       )}
     </div>
   );
-  if (operation === "audio") return <VideoAudioEditor initialFile={initialFile} userId={userId}
-    projectId={projectId} token={token} onTrim={() => setOperation("trim")} onResize={() => setOperation("resize")} />;
-  return operation === "trim" ? <VideoTrimEditor initialFile={initialFile} userId={userId}
-    projectId={projectId} token={token} onAudio={() => setOperation("audio")} onResize={() => setOperation("resize")} /> : legacyEditor;
+  // Each operation has its own screen; the tabs above them are the only navigation.
+  const screen =
+    operation === "concat" ? (
+      <VideoConcatEditor userId={userId} projectId={projectId} token={token} />
+    ) : operation === "audio" ? (
+      <VideoAudioEditor initialFile={initialFile} userId={userId}
+        projectId={projectId} token={token} />
+    ) : operation === "trim" ? (
+      <VideoTrimEditor initialFile={initialFile} userId={userId}
+        projectId={projectId} token={token} />
+    ) : (
+      legacyEditor
+    );
+  return (
+    <div className="flex flex-col gap-6">
+      <VideoOperationTabs value={operation} onChange={setOperation} />
+      {screen}
+    </div>
+  );
 }
