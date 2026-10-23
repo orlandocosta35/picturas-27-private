@@ -88,7 +88,7 @@ router.post("/:user/:project/results/:task", async (req, res, next) => {
   if (
     !/^[a-f0-9-]{36}$/i.test(task) ||
     !mime[format] ||
-    !["trim", "audio", "concat"].includes(processor) ||
+    !["resize", "trim", "audio", "concat"].includes(processor) ||
     typeof name !== "string"
   )
     return res.sendStatus(400);
@@ -105,19 +105,14 @@ router.post("/:user/:project/results/:task", async (req, res, next) => {
   const temporary = `${destination}.${crypto.randomUUID()}.tmp`;
   try {
     await fs.promises.mkdir(directory, { recursive: true });
-    // Each operation keeps its tasks in its own folder of the video_data volume.
-    const source = path.join(
-      processor === "trim"
-        ? process.env.VIDEO_RESULTS_ROOT || "/video-tasks/tasks/trim"
-        : path.join(
-            path.dirname(
-              process.env.VIDEO_RESULTS_ROOT || "/video-tasks/tasks/trim",
-            ),
-            processor,
-          ),
-      task,
-      `result.${format}`,
-    );
+    // Each operation keeps its tasks in its own folder of the video_data volume;
+    // resize (UC1) predates the per-operation folders and uses the root itself.
+    const trimRoot = process.env.VIDEO_RESULTS_ROOT || "/video-tasks/tasks/trim";
+    const tasksRoot = path.dirname(trimRoot);
+    const folder =
+      { trim: trimRoot, resize: tasksRoot }[processor] ??
+      path.join(tasksRoot, processor);
+    const source = path.join(folder, task, `result.${format}`);
     await fs.promises.copyFile(source, temporary);
     await fs.promises.rename(temporary, destination);
     const updated = await Project.updateOne(

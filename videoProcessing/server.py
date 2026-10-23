@@ -327,6 +327,8 @@ def publish_task(task):
                 "format": task["outputFormat"],
                 "name": task["downloadName"],
                 "metadata": task.get("result", {}),
+                # Resize tasks live in the root of the tasks folder, not in tasks/trim.
+                "processor": "resize",
             },
         )
     except RuntimeError as error:

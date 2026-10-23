@@ -11,7 +11,8 @@ const {
   projects,
 } = require("./videoAccess");
 const video = "http://video_processing:12000/video/trim";
-router.post("/:user/:project/video/trim", auth.checkToken, async (req, res) => {
+// Sends the stored original (never a caller upload) to a trim endpoint.
+async function withSource(req, res, url, fields, timeout) {
   let source;
   try {
     const headers = await context(req);
@@ -33,13 +34,13 @@ router.post("/:user/:project/video/trim", auth.checkToken, async (req, res) => {
         ? { knownLength: Number(source.headers["content-length"]) }
         : {}),
     });
-    for (const key of ["startSeconds", "endSeconds", "mode"])
-      if (req.body[key] !== undefined) form.append(key, String(req.body[key]));
-    const result = await axios.post(video, form, {
+    for (const [key, value] of Object.entries(fields))
+      if (value !== undefined) form.append(key, String(value));
+    const result = await axios.post(url, form, {
       headers: { ...form.getHeaders(), ...headers },
       maxBodyLength: Infinity,
       maxContentLength: Infinity,
-      timeout: 180000,
+      timeout,
     });
     res.status(result.status).json(result.data);
   } catch (e) {
@@ -47,7 +48,23 @@ router.post("/:user/:project/video/trim", auth.checkToken, async (req, res) => {
   } finally {
     source?.data.destroy();
   }
+}
+router.post("/:user/:project/video/trim", auth.checkToken, (req, res) => {
+  const { startSeconds, endSeconds, mode } = req.body;
+  return withSource(
+    req,
+    res,
+    video,
+    { startSeconds, endSeconds, mode },
+    180000,
+  );
 });
+// Fast-mode cut points, so the editor only offers those.
+router.get(
+  "/:user/:project/video/trim/keyframes",
+  auth.checkToken,
+  (req, res) => withSource(req, res, `${video}/keyframes`, {}, 120000),
+);
 router.get(
   "/:user/:project/video/trim/tasks",
   auth.checkToken,

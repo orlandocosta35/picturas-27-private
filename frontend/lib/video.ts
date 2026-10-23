@@ -147,6 +147,22 @@ export async function createVideoTrimTask(
     )
   ).data;
 }
+export type TrimKeyframes = {
+  durationSeconds: number;
+  // Fast-mode cut points in seconds: every keyframe plus the end of the video.
+  keyframes: number[];
+};
+export async function getVideoTrimKeyframes(
+  user: string,
+  project: string,
+  token: string,
+) {
+  return (
+    await api.get<TrimKeyframes>(`${trimPath(user, project)}/trim/keyframes`, {
+      headers: credentials(token),
+    })
+  ).data;
+}
 export async function getVideoTrimTask(
   user: string,
   project: string,
