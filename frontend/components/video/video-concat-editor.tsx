@@ -99,7 +99,8 @@ export function VideoConcatEditor({
   userId?: string;
   projectId?: string;
   token?: string;
-  onBack: () => void;
+  // Optional: the video editor shows its own tabs instead.
+  onBack?: () => void;
 }) {
   const nextKey = useRef(0);
   const [library, setLibrary] = useState<VideoLibraryItem[]>([]);
@@ -293,9 +294,11 @@ export function VideoConcatEditor({
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">Concatenar vídeos</h1>
-        <Button variant="outline" disabled={busy} onClick={onBack}>
-          Outras operações
-        </Button>
+        {onBack && (
+          <Button variant="outline" disabled={busy} onClick={onBack}>
+            Outras operações
+          </Button>
+        )}
       </div>
       {!userId || !projectId || !token ? (
         <p>Abre um projeto de vídeo para concatenar vídeos da tua biblioteca.</p>

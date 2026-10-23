@@ -43,8 +43,9 @@ export function VideoAudioEditor({
   userId?: string;
   projectId?: string;
   token?: string;
-  onTrim: () => void;
-  onResize: () => void;
+  // Optional: the video editor shows its own tabs instead.
+  onTrim?: () => void;
+  onResize?: () => void;
 }) {
   const [sourceResultId, setSourceResultId] = useState("");
   const [sourceUrl, setSourceUrl] = useState<string>();
@@ -317,12 +318,16 @@ export function VideoAudioEditor({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Gerir áudio do vídeo</h1>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={onTrim}>
-            Recortar
-          </Button>
-          <Button variant="outline" onClick={onResize}>
-            Redimensionar
-          </Button>
+          {onTrim && (
+            <Button variant="outline" onClick={onTrim}>
+              Recortar
+            </Button>
+          )}
+          {onResize && (
+            <Button variant="outline" onClick={onResize}>
+              Redimensionar
+            </Button>
+          )}
         </div>
       </div>
       {!initialFile || !userId || !projectId || !token ? (

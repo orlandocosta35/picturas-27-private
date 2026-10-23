@@ -57,7 +57,8 @@ export function VideoTrimEditor({
   userId?: string;
   projectId?: string;
   token?: string;
-  onResize: () => void;
+  // Optional: the video editor shows its own tabs instead.
+  onResize?: () => void;
   onAudio?: () => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
@@ -268,9 +269,11 @@ export function VideoTrimEditor({
             Gerir áudio
           </Button>
         )}
-        <Button variant="outline" disabled={busy} onClick={onResize}>
-          Redimensionar
-        </Button>
+        {onResize && (
+          <Button variant="outline" disabled={busy} onClick={onResize}>
+            Redimensionar
+          </Button>
+        )}
       </div>
       {!initialFile || !userId || !projectId || !token ? (
         <p>Abre um projeto de vídeo para recortar o original guardado.</p>
