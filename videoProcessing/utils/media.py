@@ -20,6 +20,20 @@ def probe_json(path, args, timeout=60):
         raise VideoError("UNREADABLE_VIDEO", "Could not read this video.", 422) from None
 
 
+def rotation(video):
+    """Display rotation in degrees (0, 90, 180 or 270) from ffprobe's stream data."""
+    for item in video.get("side_data_list", []):
+        if "rotation" in item:
+            try:
+                return int(round(float(item["rotation"]))) % 360
+            except (TypeError, ValueError):
+                return 0
+    try:
+        return int(video.get("tags", {}).get("rotate", 0)) % 360
+    except (TypeError, ValueError):
+        return 0
+
+
 def probe_video(path, timeout=60):
     """Inspect actual content; an upload's MIME type/extension is not evidence."""
     data = probe_json(path, ["-show_format", "-show_streams"], timeout)
@@ -47,6 +61,10 @@ def probe_video(path, timeout=60):
         if fps <= 0:
             fps = Fraction(video.get("r_frame_rate", "0/1"))
         width, height = int(video["width"]), int(video["height"])
+        # Compare sizes as displayed: re-encoding applies the rotation to the
+        # pixels (1024x576 rotated -90 becomes 576x1024 with no rotation).
+        if rotation(video) % 180 == 90:
+            width, height = height, width
         start_time = float(video.get("start_time", fmt.get("start_time", 0)))
         if duration <= 0 or fps <= 0 or width <= 0 or height <= 0 or not math.isfinite(start_time):
             raise ValueError
