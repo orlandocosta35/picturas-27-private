@@ -67,6 +67,9 @@ export function VideoFramesEditor({
     zipBytes: number;
     preview: string[];
   } | null>(null);
+  const [completedTaskId, setCompletedTaskId] = useState<string | null>(null);
+  const [downloadName, setDownloadName] = useState("frames.zip");
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const updateSession = useUpdateSession();
   const queryClient = useQueryClient();
@@ -92,6 +95,7 @@ export function VideoFramesEditor({
     setPreviewUrl(url);
     setError(null);
     setResult(null);
+    setCompletedTaskId(null);
   }
 
   function clearFile() {
@@ -103,6 +107,7 @@ export function VideoFramesEditor({
     setStartSeconds(0);
     setEndSeconds(0);
     setResult(null);
+    setCompletedTaskId(null);
     setError(null);
   }
 
@@ -130,6 +135,8 @@ export function VideoFramesEditor({
     }
     setError(null);
     setResult(null);
+    setCompletedTaskId(null);
+    setDownloading(false);
     setProgress(0);
     try {
       const task = await createVideoFramesTask(userId, projectId, token, {
@@ -150,13 +157,8 @@ export function VideoFramesEditor({
             if (timerRef.current !== null) window.clearInterval(timerRef.current);
             setResult(current.result ?? null);
             setTaskId(null);
-            const blob = await downloadVideoFramesTask(userId, projectId, token, task.id);
-            const url = URL.createObjectURL(blob);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = current.downloadName ?? "frames.zip";
-            link.click();
-            URL.revokeObjectURL(url);
+            setCompletedTaskId(task.id);
+            setDownloadName(current.downloadName ?? "frames.zip");
             updateSession.mutate({ userId, token });
             void queryClient.invalidateQueries({ queryKey: ["projectResults", userId, projectId] });
           } else if (current.status === "failed" || current.status === "cancelled") {
@@ -182,6 +184,30 @@ export function VideoFramesEditor({
           ? apiError
           : apiError?.message ?? "Could not start frame extraction.",
       );
+    }
+  }
+
+  async function downloadFrames() {
+    if (!completedTaskId || !userId || !projectId || !token) return;
+    setDownloading(true);
+    setError(null);
+    try {
+      const blob = await downloadVideoFramesTask(
+        userId,
+        projectId,
+        token,
+        completedTaskId,
+      );
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = downloadName;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch {
+      setError("Could not download the frames ZIP.");
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -250,6 +276,7 @@ export function VideoFramesEditor({
               {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
               {progress !== null && <div className="space-y-2"><div className="flex justify-between text-sm"><span>{taskId ? "Processing..." : "Processing complete"}</span><span>{progress}%</span></div><Progress value={progress} /></div>}
               {result && <div className="space-y-2 rounded-md border p-3 text-sm"><p className="font-medium">ZIP ready: {result.frameCount} frames ({formatBytes(result.zipBytes)})</p><p className="text-muted-foreground">The first {result.preview.length} frame names are available in the result metadata.</p><ul className="max-h-32 overflow-auto text-xs text-muted-foreground">{result.preview.map((name) => <li key={name}>{name}</li>)}</ul></div>}
+              {completedTaskId && <Button className="w-full" variant="outline" onClick={downloadFrames} disabled={downloading}>{downloading ? "Preparing download..." : "Download frames ZIP"}</Button>}
               <Button className="w-full gap-2" onClick={process} disabled={!duration || taskId !== null}><Play className="size-4" />{taskId ? "Processing..." : "Extract frames"}</Button>
               {taskId && <Button className="w-full gap-2" variant="outline" onClick={cancel}><LoaderCircle className="size-4 animate-spin" />Cancel processing</Button>}
             </CardContent>
