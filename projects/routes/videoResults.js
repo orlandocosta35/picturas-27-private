@@ -94,6 +94,7 @@ router.post("/:user/:project/results/:task", async (req, res, next) => {
     !/^[a-f0-9-]{36}$/i.test(task) ||
     !mime[format] ||
     !["resize", "trim", "audio", "concat", "frames"].includes(processor) ||
+    (processor === "frames" && format !== "zip") ||
     typeof name !== "string"
   )
     return res.sendStatus(400);
@@ -110,13 +111,11 @@ router.post("/:user/:project/results/:task", async (req, res, next) => {
   const temporary = `${destination}.${crypto.randomUUID()}.tmp`;
   try {
     await fs.promises.mkdir(directory, { recursive: true });
-    // Each operation keeps its tasks in its own folder of the video_data volume;
-    // resize (UC1) predates the per-operation folders and uses the root itself.
-    const trimRoot = process.env.VIDEO_RESULTS_ROOT || "/video-tasks/tasks/trim";
-    const tasksRoot = path.dirname(trimRoot);
+    // VIDEO_RESULTS_ROOT is the shared task base directory. Resize (UC1)
+    // predates per-operation folders and keeps its task files directly there.
+    const tasksRoot = process.env.VIDEO_RESULTS_ROOT || "/video-tasks/tasks";
     const folder =
-      { trim: trimRoot, resize: tasksRoot }[processor] ??
-      path.join(tasksRoot, processor);
+      processor === "resize" ? tasksRoot : path.join(tasksRoot, processor);
     const source = path.join(folder, task, `result.${format}`);
     await fs.promises.copyFile(source, temporary);
     await fs.promises.rename(temporary, destination);

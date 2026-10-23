@@ -78,3 +78,18 @@ docker run --rm --network host --volumes-from picturas-uc2-validation-frontend-1
 O Chrome de teste deve estar aberto na porta 19223, como indicado acima. O script de áudio valida entrada pelo editor existente, avisos de amplificação/remoção, operações de volume/remoção/sobreposição, seleção de um resultado silencioso, escolha de repetição, fades, visualização e recuperação após navegação. A captura fica em `audio-ui.png` no volume temporário `workspace`. O ficheiro usado no upload deve existir no computador onde corre o Chrome; `AUDIO_TEST_FILE` permite mudar o caminho por omissão `/tmp/picturas-audio-test/music.wav`.
 
 Nos testes Python, `test_audio.py` verifica os dados comprimidos dos pacotes de vídeo (devem ser iguais aos originais), mede o som descodificado e cobre limites, validações, os quatro formatos auxiliares, sincronização, fades, cancelamento e falha de publicação.
+
+## Testes do UC4
+
+Depois de gerar `source.mp4` e executar os testes Python, executar o fluxo entre
+serviços do UC4:
+
+```sh
+docker compose -f videoProcessing/tests/integration/compose.yaml exec -T projects node /source/videoProcessing/tests/integration/frames.js
+```
+
+O teste confirma o fluxo essencial de extração: submissão através do gateway,
+conclusão com PNG, publicação na biblioteca, download do ZIP e consumo de uma
+operação. Em seguida cria uma tarefa mais longa, cancela-a, confirma o estado
+`cancelled`, verifica a libertação da reserva de quota e garante que o
+resultado cancelado não é publicado.
