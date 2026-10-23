@@ -47,6 +47,7 @@ import { VideoConcatEditor } from "./video-concat-editor";
 import { VideoOperation, VideoOperationTabs } from "./video-operation-tabs";
 import { VideoTrimEditor } from "./video-trim-editor";
 import { VideoFramesEditor } from "./video-frames-editor";
+import { VideoSavedResults } from "./video-saved-results";
 import { useUpdateSession } from "@/lib/mutations/session";
 
 type VideoMetadata = {
@@ -705,6 +706,8 @@ export function VideoEditor({
     ) : operation === "frames" ? (
       <VideoFramesEditor initialFile={initialFile} userId={userId}
         projectId={projectId} token={token} />
+    ) : operation === "results" ? (
+      <VideoSavedResults userId={userId} projectId={projectId} token={token} />
     ) : (
       legacyEditor
     );

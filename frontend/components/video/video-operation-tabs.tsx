@@ -1,9 +1,22 @@
 "use client";
 
-import { Film, Images, Layers, Scissors, Volume2 } from "lucide-react";
+import {
+  Download,
+  Film,
+  Images,
+  Layers,
+  Scissors,
+  Volume2,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export type VideoOperation = "trim" | "resize" | "audio" | "concat" | "frames";
+export type VideoOperation =
+  | "trim"
+  | "resize"
+  | "audio"
+  | "concat"
+  | "frames"
+  | "results";
 
 const OPERATIONS: Array<{
   value: VideoOperation;
@@ -15,6 +28,7 @@ const OPERATIONS: Array<{
   { value: "audio", label: "Manage audio", icon: Volume2 },
   { value: "concat", label: "Join", icon: Layers },
   { value: "frames", label: "Extract frames", icon: Images },
+  { value: "results", label: "Saved results", icon: Download },
 ];
 
 // One navigation for every video operation, shown above whichever screen is open.
@@ -29,7 +43,7 @@ export function VideoOperationTabs({
     <div
       role="tablist"
       aria-label="Video operation"
-      className="mx-auto grid w-full max-w-6xl grid-cols-2 gap-2 sm:grid-cols-5"
+      className="mx-auto grid w-full max-w-6xl grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6"
     >
       {OPERATIONS.map(({ value: operation, label, icon: Icon }) => (
         <Button
