@@ -3,7 +3,12 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const Project = require("../models/project");
-const mime = { mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm" };
+const mime = {
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
+  zip: "application/zip",
+};
 router.use((req, res, next) => {
   const secret = process.env.VIDEO_INTERNAL_SECRET;
   const a = Buffer.from(req.get("Authorization") || ""),
@@ -88,7 +93,7 @@ router.post("/:user/:project/results/:task", async (req, res, next) => {
   if (
     !/^[a-f0-9-]{36}$/i.test(task) ||
     !mime[format] ||
-    !["resize", "trim", "audio", "concat"].includes(processor) ||
+    !["resize", "trim", "audio", "concat", "frames"].includes(processor) ||
     typeof name !== "string"
   )
     return res.sendStatus(400);
